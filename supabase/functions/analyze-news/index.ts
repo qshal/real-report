@@ -210,28 +210,40 @@ serve(async (req) => {
 
     let finalLabel: PredictionLabel = aiLabel;
     if (metadata.score >= 75 && aiLabel === "misleading") finalLabel = "fake";
-    if (metadata.score <= 25 && aiLabel === "fake" && aiConfidence < 75) finalLabel = "misleading";
+    if (metadata.score <= 20 && aiLabel === "fake" && aiConfidence < 75) finalLabel = "misleading";
 
-    const alignmentBoost =
-      (finalLabel === "fake" && metadata.score >= 60) ||
-      (finalLabel === "real" && metadata.score <= 25) ||
-      (finalLabel === "misleading" && metadata.score > 25 && metadata.score < 60)
+    const labelBias = finalLabel === "fake" ? 14 : finalLabel === "misleading" ? 6 : -8;
+    const fakeProbability = Math.max(1, Math.min(99, Math.round(metadata.score * 0.55 + aiConfidence * 0.45 + labelBias)));
+    const trustScore = Math.max(1, Math.min(99, Math.round(100 - fakeProbability + (metadata.features.trustedBonus > 0 ? 8 : 0))));
+
+    const confidenceAlignmentBoost =
+      (finalLabel === "fake" && fakeProbability >= 65) ||
+      (finalLabel === "real" && trustScore >= 65) ||
+      (finalLabel === "misleading" && fakeProbability >= 45 && fakeProbability < 70)
         ? 5
         : 0;
 
-    const finalConfidence = Math.min(99, Math.round(aiConfidence + alignmentBoost));
+    const finalConfidence = Math.min(99, Math.round(aiConfidence + confidenceAlignmentBoost));
+
+    const riskBand = fakeProbability >= 70 ? "high" : fakeProbability >= 45 ? "medium" : "low";
 
     return new Response(
       JSON.stringify({
         label: finalLabel,
         confidence: finalConfidence,
-        explanation: aiParsed.explanation ?? "Hybrid classification completed from language + metadata features.",
-        modelName: "hybrid/gemini-3-flash-preview+metadata-v1",
+        explanation:
+          aiParsed.explanation ??
+          "Hybrid classification completed from semantic analysis and metadata trust indicators.",
+        modelName: "hybrid/gemini-3-flash-preview+metadata-v2",
         metadata: {
           ...metadata.features,
+          indicators: metadata.indicators,
           metadataRiskScore: metadata.score,
           aiLabel,
           aiConfidence,
+          fakeProbability,
+          trustScore,
+          riskBand,
         },
       }),
       {
