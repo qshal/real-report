@@ -16,7 +16,7 @@ export const listUserNewsChecks = async (userId: string, limit = 100) => {
   return data as NewsCheck[];
 };
 
-export const createNewsCheck = async (payload: TablesInsert<"news_checks">) => {
+export const createNewsCheck = async (payload: TablesInsert<"news_checks"> & Record<string, unknown>) => {
   const { data, error } = await supabase.from("news_checks").insert(payload).select("*").single();
   if (error) throw error;
   return data as NewsCheck;
