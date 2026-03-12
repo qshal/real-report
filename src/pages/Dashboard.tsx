@@ -17,7 +17,7 @@ import type { Json, Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
-import { analysisSchema, predictFakeNews, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
+import { analysisSchema, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
 
 const profileSchema = z.object({
@@ -90,8 +90,6 @@ const Dashboard = () => {
     }
 
     const parsedPayload = parsed.data as { inputType: "text"; text: string } | { inputType: "url"; url: string };
-    const rawInput = parsedPayload.inputType === "text" ? parsedPayload.text : parsedPayload.url;
-    const baselinePrediction = predictFakeNews(rawInput);
 
     setSubmitting(true);
 
@@ -107,9 +105,9 @@ const Dashboard = () => {
         confidence: hybridPrediction.confidence,
         explanation: hybridPrediction.explanation,
         model_name: hybridPrediction.modelName,
-        baseline_predicted_label: baselinePrediction.label,
-        baseline_confidence: baselinePrediction.confidence,
-        baseline_explanation: baselinePrediction.explanation,
+        baseline_predicted_label: null,
+        baseline_confidence: null,
+        baseline_explanation: null,
         analysis_metadata: hybridPrediction.metadata as Json,
       })) as NewsCheck;
 
