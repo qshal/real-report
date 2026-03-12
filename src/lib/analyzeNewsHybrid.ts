@@ -83,6 +83,40 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const adjustedConfidence = clampConfidence(confidence);
 
+  // Calculate trust score based on multiple signals
+  let trustScore = 50; // Base trust
+  
+  // AI confidence contributes (40% weight)
+  trustScore += (aiResult.confidence - 50) * 0.4;
+  
+  // News verification contributes (30% weight)
+  if (newsResult.trustedSourcesFound > 0) {
+    if (newsResult.fakeProbability < 30) {
+      trustScore += 30; // Strong support from news
+    } else if (newsResult.fakeProbability > 70) {
+      trustScore -= 30; // News contradicts
+    } else {
+      trustScore += (50 - newsResult.fakeProbability) * 0.3; // Partial
+    }
+  }
+  
+  // Source credibility contributes (30% weight)
+  if (sourceCredibilityResult) {
+    trustScore += (sourceCredibilityResult.credibilityScore - 0.5) * 60;
+  }
+  
+  const finalTrustScore = clampConfidence(trustScore);
+  
+  // Calculate fake probability inverse
+  const fakeProbability = label === "fake" ? adjustedConfidence : (label === "real" ? 100 - adjustedConfidence : 50);
+  
+  // Determine risk band
+  let riskBand = "medium";
+  if (finalTrustScore >= 80) riskBand = "low";
+  else if (finalTrustScore <= 30) riskBand = "high";
+  else if (finalTrustScore >= 60) riskBand = "low-medium";
+  else riskBand = "medium-high";
+
   return {
     label,
     confidence: adjustedConfidence,
@@ -103,6 +137,9 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       potentialIssues: aiResult.potentialIssues,
       sourceDomain: sourceCredibilityResult?.domain || null,
       sourceCredibility: sourceCredibilityResult?.credibilityScore || null,
+      trustScore: finalTrustScore,
+      fakeProbability,
+      riskBand,
       newsVerification: {
         trustedSourcesFound: newsResult.trustedSourcesFound,
         supportingArticles: newsResult.supportingArticles.length,
