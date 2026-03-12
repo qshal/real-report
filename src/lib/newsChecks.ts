@@ -27,7 +27,10 @@ export const createNewsCheck = async (payload: TablesInsert<"news_checks"> & Rec
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const { data, error } = await supabase.from("news_checks").insert(payload).select("*").single();
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase insert error:", error);
+        throw new Error(`Database error: ${error.message}`);
+      }
       return data as NewsCheck;
     } catch (error) {
       if (attempt === 0 && isRetryableError(error)) {
