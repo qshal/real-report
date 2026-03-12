@@ -54,15 +54,24 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
           parts: [{ text: prompt }]
         }],
         generationConfig: {
-          temperature: 0.1, // Low temperature for more consistent results
+          temperature: 0.1,
           maxOutputTokens: 800,
         },
       }),
     });
 
     if (!response.ok) {
-      console.error("Gemini API error:", response.status, await response.text());
-      return null;
+      const errorText = await response.text();
+      console.error("Gemini API error:", response.status, errorText);
+      
+      // Return error info for debugging
+      return {
+        isFactual: false,
+        confidence: 0,
+        explanation: `API Error ${response.status}: ${errorText.slice(0, 100)}`,
+        keyClaims: [],
+        potentialIssues: ["API request failed"],
+      };
     }
 
     const data = await response.json();

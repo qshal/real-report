@@ -58,9 +58,38 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   
   // ALWAYS use Gemini AI as the primary and sole decision maker
   const geminiKey = getGeminiApiKey();
+  
+  // Check if API key is configured
+  if (!geminiKey) {
+    return {
+      label: "misleading",
+      confidence: 50,
+      explanation: "Configuration Error: Gemini API key not found. Please add VITE_GEMINI_API_KEY to environment variables.",
+      modelName: "config-error",
+      metadata: {
+        claim,
+        error: "Missing API key",
+      },
+    };
+  }
+  
   const aiResult = await analyzeWithAI(content, geminiKey);
   
-  if (aiResult) {
+  // Check if AI returned an error
+  if (aiResult && aiResult.confidence === 0 && aiResult.explanation.includes("API Error")) {
+    return {
+      label: "misleading",
+      confidence: 50,
+      explanation: `AI Service Error: ${aiResult.explanation}. Please check your API key configuration.`,
+      modelName: "api-error",
+      metadata: {
+        claim,
+        error: aiResult.explanation,
+      },
+    };
+  }
+  
+  if (aiResult && aiResult.confidence > 0) {
     // For URLs: Combine AI with source credibility as additional context
     if (isUrl) {
       const sourceCredibilityResult = analyzeSourceCredibility(content);
