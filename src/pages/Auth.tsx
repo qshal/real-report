@@ -51,7 +51,7 @@ const Auth = () => {
     toast.success("Welcome back.");
   };
 
-  const handleSignUp = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSignUp = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsed = signupSchema.safeParse({ email, password, displayName });
 
