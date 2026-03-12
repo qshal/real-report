@@ -1,7 +1,8 @@
-import { BarChart3, FileCheck2, ShieldAlert, Newspaper, ExternalLink } from "lucide-react";
+import { BarChart3, FileCheck2, ShieldAlert, Newspaper, ExternalLink, Brain, Globe, Info } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Json } from "@/integrations/supabase/types";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 
@@ -38,6 +39,17 @@ interface NewsVerification {
   reasoning?: string;
 }
 
+interface ComponentScores {
+  aiScore: number;
+  newsScore: number;
+  sourceScore: number;
+  weights: {
+    ai: string;
+    news: string;
+    source: string;
+  };
+}
+
 export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
   if (!item) {
     return (
@@ -58,6 +70,7 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
   const newsVerification = metadata?.newsVerification as NewsVerification | undefined;
   const supportingArticles = metadata?.supportingArticles as NewsArticle[] | undefined;
   const contradictingArticles = metadata?.contradictingArticles as NewsArticle[] | undefined;
+  const componentScores = metadata?.componentScores as ComponentScores | undefined;
   
   // Show articles if we have any results
   const hasNewsResults = (supportingArticles && supportingArticles.length > 0) || 
@@ -65,23 +78,119 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
                          (newsVerification && newsVerification.trustedSourcesFound > 0);
 
   return (
-    <Card className="glass-panel">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2"><FileCheck2 className="h-5 w-5 text-brand-highlight" /> Latest result</CardTitle>
-        <CardDescription>{new Date(item.created_at).toLocaleString()}</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <Badge className={labelStyles[item.predicted_label] ?? ""}>{item.predicted_label.toUpperCase()}</Badge>
-        <p className="text-sm text-muted-foreground">{item.explanation ?? "No explanation available."}</p>
-        <div className="grid gap-2 text-sm sm:grid-cols-2">
-          <p className="inline-flex items-center gap-1"><BarChart3 className="h-4 w-4" /> Confidence: <span className="font-semibold">{Math.round(item.confidence)}%</span></p>
-          {summary.fakeProbability !== null ? <p className="inline-flex items-center gap-1"><ShieldAlert className="h-4 w-4 text-signal-fake" /> Fake probability: <span className="font-semibold">{summary.fakeProbability}%</span></p> : null}
-          {summary.trustScore !== null ? <p>Trust score: <span className="font-semibold">{summary.trustScore}%</span></p> : null}
-          {summary.riskBand ? <p>Risk band: <span className="font-semibold">{summary.riskBand}</span></p> : null}
-          {hasNewsResults ? (
-            <p className="inline-flex items-center gap-1"><Newspaper className="h-4 w-4 text-brand" /> News sources: <span className="font-semibold">{newsVerification.trustedSourcesFound}</span></p>
-          ) : null}
-        </div>
+    <TooltipProvider>
+      <Card className="glass-panel">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><FileCheck2 className="h-5 w-5 text-brand-highlight" /> Latest result</CardTitle>
+          <CardDescription>{new Date(item.created_at).toLocaleString()}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Badge className={labelStyles[item.predicted_label] ?? ""}>{item.predicted_label.toUpperCase()}</Badge>
+          <p className="text-sm text-muted-foreground">{item.explanation ?? "No explanation available."}</p>
+          <div className="grid gap-2 text-sm sm:grid-cols-2">
+            <p className="inline-flex items-center gap-1"><BarChart3 className="h-4 w-4" /> Confidence: <span className="font-semibold">{Math.round(item.confidence)}%</span></p>
+            {summary.fakeProbability !== null ? <p className="inline-flex items-center gap-1"><ShieldAlert className="h-4 w-4 text-signal-fake" /> Fake probability: <span className="font-semibold">{summary.fakeProbability}%</span></p> : null}
+            {summary.trustScore !== null ? <p>Trust score: <span className="font-semibold">{summary.trustScore}%</span></p> : null}
+            {summary.riskBand ? <p>Risk band: <span className="font-semibold">{summary.riskBand}</span></p> : null}
+            {hasNewsResults ? (
+              <p className="inline-flex items-center gap-1"><Newspaper className="h-4 w-4 text-brand" /> News sources: <span className="font-semibold">{newsVerification.trustedSourcesFound}</span></p>
+            ) : null}
+          </div>
+
+          {/* Component Scores Breakdown */}
+          {componentScores && (
+            <>
+              <Separator className="my-3" />
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" /> Trust Score Calculation
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Info className="h-3 w-3 text-muted-foreground" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Weighted formula: (AI × 0.40) + (News × 0.35) + (Source × 0.25)</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </h4>
+                
+                <div className="space-y-2 text-xs">
+                  {/* AI Score */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Brain className="h-3 w-3 text-blue-500" />
+                      <span>AI Analysis</span>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-3 w-3 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Pollinations AI confidence score</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-blue-500" style={{ width: `${componentScores.aiScore}%` }} />
+                      </div>
+                      <span className="font-semibold w-8 text-right">{componentScores.aiScore}%</span>
+                      <span className="text-muted-foreground w-6">{componentScores.weights.ai}</span>
+                    </div>
+                  </div>
+
+                  {/* News Score */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Newspaper className="h-3 w-3 text-green-500" />
+                      <span>News Verification</span>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-3 w-3 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>NewsAPI verification score</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-green-500" style={{ width: `${componentScores.newsScore}%` }} />
+                      </div>
+                      <span className="font-semibold w-8 text-right">{componentScores.newsScore}%</span>
+                      <span className="text-muted-foreground w-6">{componentScores.weights.news}</span>
+                    </div>
+                  </div>
+
+                  {/* Source Score */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-3 w-3 text-purple-500" />
+                      <span>Source Credibility</span>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-3 w-3 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>Domain reputation score (Tier 1-6)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-purple-500" style={{ width: `${componentScores.sourceScore}%` }} />
+                      </div>
+                      <span className="font-semibold w-8 text-right">{componentScores.sourceScore}%</span>
+                      <span className="text-muted-foreground w-6">{componentScores.weights.source}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-xs text-muted-foreground pt-1">
+                  Final: ({componentScores.aiScore} × 0.40) + ({componentScores.newsScore} × 0.35) + ({componentScores.sourceScore} × 0.25) = <span className="font-semibold">{summary.trustScore}%</span>
+                </div>
+              </div>
+            </>
+          )}
         
         {/* News Articles Section */}
         {hasNewsResults && (
@@ -149,5 +258,6 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
         <p className="rounded-lg border border-border/70 bg-muted/40 p-3 text-xs text-muted-foreground">{sourcePreview}</p>
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 };
