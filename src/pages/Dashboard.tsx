@@ -17,7 +17,7 @@ import type { Json, Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
-import { analysisSchema, predictFakeNews, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
+import { analysisSchema, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
 
 const profileSchema = z.object({
