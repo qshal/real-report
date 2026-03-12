@@ -123,6 +123,13 @@ serve(async (req) => {
       });
     }
 
+    if (payload.inputType !== "text" && payload.inputType !== "url") {
+      return new Response(JSON.stringify({ error: "Invalid input type." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify({ error: "AI key is not configured." }), {
