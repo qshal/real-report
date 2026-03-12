@@ -1,5 +1,5 @@
 /**
- * AI-Powered Fact Checking using Google's Gemini API
+ * AI-Powered Fact Checking using Mistral AI API
  * 
  * This uses a large language model to analyze claims for factual accuracy
  * even when they haven't been previously fact-checked.
@@ -13,26 +13,23 @@ export interface AIFactCheckResult {
   potentialIssues: string[];
 }
 
-// Using Google's Gemini API (free tier available)
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+// Using Mistral AI API (free tier available)
+const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
 
 /**
- * Analyze text using Gemini AI for factual accuracy
+ * Analyze text using Mistral AI for factual accuracy
  */
 export async function analyzeWithAI(
   text: string,
   apiKey?: string
 ): Promise<AIFactCheckResult | null> {
   if (!apiKey) {
-    console.warn("No Gemini API key provided");
+    console.warn("No Mistral API key provided");
     return null;
   }
 
-  const prompt = `You are a fact-checking AI. Analyze the following text for factual accuracy.
-
-Text to analyze: """${text.slice(0, 2000)}"""
-
-Respond in this exact JSON format:
+  const systemPrompt = `You are a fact-checking AI. Analyze text for factual accuracy.
+Respond ONLY in this exact JSON format:
 {
   "isFactual": boolean (true if mostly factual, false if contains false/misleading claims),
   "confidence": number (0-100, how confident you are in this assessment),
@@ -43,26 +40,30 @@ Respond in this exact JSON format:
 
 Be critical and skeptical. Common knowledge and opinions are fine, but specific facts, statistics, and scientific claims should be flagged if they seem questionable.`;
 
+  const userPrompt = `Text to analyze: """${text.slice(0, 2000)}"""`;
+
   try {
-    const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
+    const response = await fetch(MISTRAL_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 800,
-        },
+        model: "mistral-small-latest",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 800,
+        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
+      console.error("Mistral API error:", response.status, errorText);
       
       // Return error info for debugging
       return {
@@ -75,21 +76,14 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
     }
 
     const data = await response.json();
-    const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    const generatedText = data.choices?.[0]?.message?.content;
 
     if (!generatedText) {
-      console.error("No response from Gemini");
+      console.error("No response from Mistral");
       return null;
     }
 
-    // Extract JSON from the response
-    const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error("Could not parse Gemini response:", generatedText);
-      return null;
-    }
-
-    const result: AIFactCheckResult = JSON.parse(jsonMatch[0]);
+    const result: AIFactCheckResult = JSON.parse(generatedText);
     return result;
   } catch (error) {
     console.error("AI analysis error:", error);
@@ -98,10 +92,10 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
 }
 
 /**
- * Get Gemini API key from environment
+ * Get Mistral API key from environment
  */
 export function getGeminiApiKey(): string | undefined {
-  return import.meta.env.VITE_GEMINI_API_KEY;
+  return import.meta.env.VITE_MISTRAL_API_KEY;
 }
 
 /**
