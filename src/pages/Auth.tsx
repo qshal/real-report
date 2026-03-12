@@ -30,7 +30,7 @@ const Auth = () => {
     return <Navigate to="/app" replace />;
   }
 
-  const handleSignIn = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSignIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const parsed = baseSchema.safeParse({ email, password });
 
