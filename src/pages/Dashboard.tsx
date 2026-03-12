@@ -112,7 +112,7 @@ const Dashboard = () => {
         baseline_predicted_label: baselinePrediction.label,
         baseline_confidence: baselinePrediction.confidence,
         baseline_explanation: baselinePrediction.explanation,
-        analysis_metadata: hybridPrediction.metadata,
+        analysis_metadata: hybridPrediction.metadata as Json,
       })) as NewsCheck;
 
       setHistory((prev) => [saved, ...prev]);
