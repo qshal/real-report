@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
-import { storeAnalysisOnChain, generateContentHash } from "@/lib/blockchain";
+import { storeAnalysisOnBackend, getBlockchainStatus } from "@/lib/blockchainApi";
 
 type Row = {
   predicted_label: string;
@@ -95,7 +95,7 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
 
     setStoring(true);
     try {
-      const result = await storeAnalysisOnChain(
+      const result = await storeAnalysisOnBackend(
         content,
         item.predicted_label,
         item.confidence
