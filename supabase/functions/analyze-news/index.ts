@@ -90,7 +90,7 @@ const metadataRiskScore = (payload: AnalyzeRequest) => {
 };
 
 const normalizeLabel = (value: string | undefined): PredictionLabel => {
-  if (value === "fake" || value === "misleading") return value;
+  if (value === "fake") return value;
   return "real";
 };
 
