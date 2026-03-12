@@ -1,5 +1,6 @@
 import { predictFakeNews } from "@/lib/modelLoader";
 import { analyzeWithFactCheck, getFactCheckApiKey } from "@/lib/factCheckApi";
+import { analyzeWithAI, getGeminiApiKey, aiResultToLabel } from "@/lib/aiFactChecker";
 import type { PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 
 export type AnalyzeNewsPayload =
@@ -44,13 +45,13 @@ const metadataRiskScore = (text: string) => {
   };
 };
 
-// Client-side analysis using ML model + Fact Check API
+// Client-side analysis using ML model + Fact Check API + AI Analysis
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   
   // Step 1: Check against fact-checking databases
-  const apiKey = getFactCheckApiKey();
-  const factCheckResult = await analyzeWithFactCheck(content, apiKey);
+  const factCheckApiKey = getFactCheckApiKey();
+  const factCheckResult = await analyzeWithFactCheck(content, factCheckApiKey);
   
   // If found in fact-check database, use that result
   if (factCheckResult.hasFactCheck && factCheckResult.isReliable !== undefined) {
@@ -71,7 +72,27 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     };
   }
   
-  // Step 2: Fall back to ML model if not in fact-check database
+  // Step 2: Use AI fact-checking for deeper analysis
+  const geminiKey = getGeminiApiKey();
+  const aiResult = await analyzeWithAI(content, geminiKey);
+  
+  if (aiResult) {
+    const aiLabel = aiResultToLabel(aiResult);
+    return {
+      label: aiLabel.label,
+      confidence: aiLabel.confidence,
+      explanation: aiLabel.explanation,
+      modelName: "gemini-ai-v1.5",
+      metadata: {
+        aiAnalyzed: true,
+        keyClaims: aiResult.keyClaims,
+        potentialIssues: aiResult.potentialIssues,
+        factChecked: false,
+      },
+    };
+  }
+  
+  // Step 3: Fall back to ML model if AI is unavailable
   const prediction = predictFakeNews(content);
   
   // Get metadata risk score
