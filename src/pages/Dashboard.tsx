@@ -3,6 +3,8 @@ import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisOverviewCards } from "@/components/dashboard/AnalysisOverviewCards";
+import { DatasetManagerCard } from "@/components/dashboard/DatasetManagerCard";
+import { DatasetUploaderCard } from "@/components/dashboard/DatasetUploaderCard";
 import { LatestAnalysisCard } from "@/components/dashboard/LatestAnalysisCard";
 import { ModelComparisonCard } from "@/components/dashboard/ModelComparisonCard";
 import { Badge } from "@/components/ui/badge";
@@ -191,6 +193,12 @@ const Dashboard = () => {
         <AnalysisOverviewCards history={history} />
 
         <ModelComparisonCard history={history} />
+
+        {/* Dataset Management Section */}
+        <section className="grid gap-4 lg:grid-cols-2">
+          <DatasetManagerCard />
+          <DatasetUploaderCard />
+        </section>
 
         <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <Card className="glass-panel">
