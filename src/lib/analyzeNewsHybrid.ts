@@ -21,6 +21,8 @@ export type HybridAnalysisResult = {
   metadata: Record<string, unknown>;
 };
 
+const clampConfidence = (value: number) => Math.max(1, Math.min(99, Math.round(value)));
+
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   const isUrl = payload.inputType === "url";
@@ -28,63 +30,53 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const geminiKey = getGeminiApiKey();
   if (!geminiKey) {
-    return {
-      label: "misleading",
-      confidence: 50,
-      explanation: "Configuration Error: Gemini API key not found. Please add VITE_GEMINI_API_KEY to environment variables.",
-      modelName: "config-error",
-      metadata: { claim, error: "Missing API key" },
-    };
+    throw new Error("AI analysis is not configured.");
   }
 
   const aiResult = await analyzeWithAI(content, geminiKey);
   if (!aiResult || aiResult.confidence === 0) {
-    return {
-      label: "misleading",
-      confidence: 50,
-      explanation: aiResult?.explanation || "AI analysis unavailable. Unable to verify content.",
-      modelName: "ai-unavailable",
-      metadata: { claim, error: aiResult?.explanation || "AI API failed" },
-    };
+    throw new Error(aiResult?.explanation || "AI analysis unavailable. Unable to verify content.");
   }
 
   const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(content) : null;
+  const label: PredictionLabel = aiResult.isFactual ? "real" : "fake";
+
   let confidence = aiResult.confidence;
-  let confidenceReason = "AI-only confidence";
+  let confidenceReason = "AI verdict";
 
   if (sourceCredibilityResult) {
     if (sourceCredibilityResult.credibilityScore >= 0.8) {
-      confidence = Math.min(95, confidence + 10);
-      confidenceReason = "Boosted by high-credibility source";
-    } else if (sourceCredibilityResult.credibilityScore <= 0.3 && aiResult.isFactual) {
-      confidence = Math.max(50, confidence - 20);
-      confidenceReason = "Reduced due to low-credibility source";
+      confidence += 6;
+      confidenceReason = "AI verdict with high-credibility source boost";
+    } else if (sourceCredibilityResult.credibilityScore <= 0.3) {
+      confidence -= 6;
+      confidenceReason = "AI verdict with low-credibility source penalty";
     }
   }
 
-  const label: PredictionLabel = aiResult.isFactual ? "real" : aiResult.confidence >= 65 ? "fake" : "misleading";
+  const adjustedConfidence = clampConfidence(confidence);
 
   return {
     label,
-    confidence,
-    explanation: `AI Analysis: ${aiResult.explanation}${
+    confidence: adjustedConfidence,
+    explanation: `AI verdict: ${label.toUpperCase()}. ${aiResult.explanation}${
       sourceCredibilityResult
         ? ` Source: ${sourceCredibilityResult.domain} (credibility ${Math.round(sourceCredibilityResult.credibilityScore * 100)}%).`
         : ""
     }`,
-    modelName: isUrl ? "ai+source-credibility" : "ai-only",
+    modelName: isUrl ? "ai+source-credibility-binary" : "ai-binary",
     metadata: {
       claim,
       aiAnalyzed: true,
       aiConfidence: aiResult.confidence,
-      adjustedConfidence: confidence,
+      adjustedConfidence,
       confidenceReason,
       isFactual: aiResult.isFactual,
       keyClaims: aiResult.keyClaims,
       potentialIssues: aiResult.potentialIssues,
       sourceDomain: sourceCredibilityResult?.domain || null,
       sourceCredibility: sourceCredibilityResult?.credibilityScore || null,
-      reasoning: isUrl ? "AI analysis with source credibility" : "AI analysis only",
+      reasoning: "Binary AI verdict (real/fake) with source credibility confidence adjustment",
     },
   };
 };
