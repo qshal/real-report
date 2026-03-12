@@ -153,7 +153,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are a misinformation classifier. Return ONLY compact JSON: {\"label\":\"real|fake|misleading\",\"confidence\":number,\"explanation\":string}. Use both linguistic signals and metadata risk score.",
+              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake|misleading. Consider semantics, writing style, internal consistency, and metadata indicators.",
           },
           {
             role: "user",
@@ -161,6 +161,7 @@ serve(async (req) => {
               inputType: payload.inputType,
               content,
               metadataRiskScore: metadata.score,
+              indicators: metadata.indicators,
               metadataFeatures: metadata.features,
             }),
           },
