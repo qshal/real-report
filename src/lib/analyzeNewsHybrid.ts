@@ -83,29 +83,30 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const adjustedConfidence = clampConfidence(confidence);
 
-  // Calculate trust score based on multiple signals
-  let trustScore = 50; // Base trust
+  // Calculate weighted trust score from three components:
+  // 1. AI Score (40% weight) - from Pollinations AI analysis
+  // 2. NLP/News Score (35% weight) - from NewsAPI verification
+  // 3. Source Credibility Score (25% weight) - from domain reputation
   
-  // AI confidence contributes (40% weight)
-  trustScore += (aiResult.confidence - 50) * 0.4;
+  // Normalize AI score to 0-100 (already in that range)
+  const aiScore = aiResult.confidence;
   
-  // News verification contributes (30% weight)
-  if (newsResult.trustedSourcesFound > 0) {
-    if (newsResult.fakeProbability < 30) {
-      trustScore += 30; // Strong support from news
-    } else if (newsResult.fakeProbability > 70) {
-      trustScore -= 30; // News contradicts
-    } else {
-      trustScore += (50 - newsResult.fakeProbability) * 0.3; // Partial
-    }
-  }
+  // Normalize News/NLP score (inverse of fake probability, 0-100)
+  const newsScore = newsResult.trustedSourcesFound > 0 
+    ? 100 - newsResult.fakeProbability 
+    : 50; // Neutral if no news data
   
-  // Source credibility contributes (30% weight)
-  if (sourceCredibilityResult) {
-    trustScore += (sourceCredibilityResult.credibilityScore - 0.5) * 60;
-  }
+  // Normalize Source Credibility score (0-100)
+  const sourceScore = sourceCredibilityResult 
+    ? sourceCredibilityResult.credibilityScore * 100 
+    : 50; // Neutral if no URL analysis
   
-  const finalTrustScore = clampConfidence(trustScore);
+  // Weighted calculation
+  const finalTrustScore = Math.round(
+    (aiScore * 0.40) +      // AI: 40% weight
+    (newsScore * 0.35) +    // News/NLP: 35% weight
+    (sourceScore * 0.25)    // Source: 25% weight
+  );
   
   // Calculate fake probability inverse
   const fakeProbability = label === "fake" ? adjustedConfidence : (label === "real" ? 100 - adjustedConfidence : 50);
@@ -140,6 +141,17 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       trustScore: finalTrustScore,
       fakeProbability,
       riskBand,
+      // Component scores for transparency
+      componentScores: {
+        aiScore: Math.round(aiScore),
+        newsScore: Math.round(newsScore),
+        sourceScore: Math.round(sourceScore),
+        weights: {
+          ai: "40%",
+          news: "35%",
+          source: "25%"
+        }
+      },
       newsVerification: {
         trustedSourcesFound: newsResult.trustedSourcesFound,
         supportingArticles: newsResult.supportingArticles.length,
