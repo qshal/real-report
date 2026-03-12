@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { ModelComparisonCard } from "@/components/dashboard/ModelComparisonCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,10 +10,11 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import type { Json, Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
-import { analysisSchema, predictFakeNews } from "@/lib/fakeNewsAnalyzer";
-import { createNewsCheck, listUserNewsChecks, updateProfile } from "@/lib/newsChecks";
-import type { Tables } from "@/integrations/supabase/types";
+import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
+import { analysisSchema, predictFakeNews, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
+import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
 
 const profileSchema = z.object({
   displayName: z.string().trim().min(2, "Display name must be at least 2 characters.").max(60),
@@ -22,13 +24,21 @@ const profileSchema = z.object({
     .regex(/^[a-zA-Z0-9_]{3,20}$/, "Username must be 3-20 chars: letters, numbers, underscore."),
 });
 
-type NewsCheck = Tables<"news_checks">;
+type NewsCheck = Tables<"news_checks"> & {
+  baseline_predicted_label?: PredictionLabel | null;
+  baseline_confidence?: number | null;
+  baseline_explanation?: string | null;
+  verified_label?: PredictionLabel | null;
+  verified_at?: string | null;
+};
 
 const labelStyles: Record<string, string> = {
   real: "border-signal-real/30 bg-signal-real/10 text-signal-real",
   fake: "border-signal-fake/30 bg-signal-fake/10 text-signal-fake",
   misleading: "border-signal-warn/30 bg-signal-warn/10 text-signal-warn",
 };
+
+const verificationOptions: PredictionLabel[] = ["real", "misleading", "fake"];
 
 const Dashboard = () => {
   const { user, profile, signOut, refreshProfile } = useAuth();
@@ -38,6 +48,7 @@ const Dashboard = () => {
   const [history, setHistory] = useState<NewsCheck[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [verifyingId, setVerifyingId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
   const [username, setUsername] = useState(profile?.username ?? "");
 
@@ -49,7 +60,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (!user) return;
     void listUserNewsChecks(user.id)
-      .then((rows) => setHistory(rows))
+      .then((rows) => setHistory(rows as NewsCheck[]))
       .catch(() => toast.error("Failed to load analysis history."));
   }, [user]);
 
@@ -80,32 +91,41 @@ const Dashboard = () => {
       return;
     }
 
-    const rawInput = parsed.data.inputType === "text" ? parsed.data.text : parsed.data.url;
-    const prediction = predictFakeNews(rawInput);
+    const parsedPayload = parsed.data as { inputType: "text"; text: string } | { inputType: "url"; url: string };
+    const rawInput = parsedPayload.inputType === "text" ? parsedPayload.text : parsedPayload.url;
+    const baselinePrediction = predictFakeNews(rawInput);
 
     setSubmitting(true);
 
     try {
-      const saved = await createNewsCheck({
+      const hybridPrediction = await analyzeNewsHybrid(parsedPayload);
+
+      const saved = (await createNewsCheck({
         user_id: user.id,
-        input_type: parsed.data.inputType,
-        input_text: parsed.data.inputType === "text" ? parsed.data.text : null,
-        source_url: parsed.data.inputType === "url" ? parsed.data.url : null,
-        predicted_label: prediction.label,
-        confidence: prediction.confidence,
-        explanation: prediction.explanation,
-      });
+        input_type: parsedPayload.inputType,
+        input_text: parsedPayload.inputType === "text" ? parsedPayload.text : null,
+        source_url: parsedPayload.inputType === "url" ? parsedPayload.url : null,
+        predicted_label: hybridPrediction.label,
+        confidence: hybridPrediction.confidence,
+        explanation: hybridPrediction.explanation,
+        model_name: hybridPrediction.modelName,
+        baseline_predicted_label: baselinePrediction.label,
+        baseline_confidence: baselinePrediction.confidence,
+        baseline_explanation: baselinePrediction.explanation,
+        analysis_metadata: hybridPrediction.metadata as Json,
+      })) as NewsCheck;
 
       setHistory((prev) => [saved, ...prev]);
-      toast.success("Analysis saved to your dashboard.");
+      toast.success("Hybrid analysis saved to your dashboard.");
 
-      if (parsed.data.inputType === "text") {
+      if (parsedPayload.inputType === "text") {
         setTextValue("");
       } else {
         setUrlValue("");
       }
-    } catch {
-      toast.error("Analysis could not be saved.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Analysis could not be saved.";
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
@@ -138,6 +158,21 @@ const Dashboard = () => {
     }
   };
 
+  const handleSetVerifiedLabel = async (newsCheckId: string, label: PredictionLabel | null) => {
+    if (!user) return;
+    setVerifyingId(newsCheckId);
+
+    try {
+      const updated = (await updateNewsCheckVerification(newsCheckId, user.id, label)) as NewsCheck;
+      setHistory((prev) => prev.map((item) => (item.id === newsCheckId ? updated : item)));
+      toast.success(label ? "Ground-truth label saved." : "Ground-truth label cleared.");
+    } catch {
+      toast.error("Failed to update verified label.");
+    } finally {
+      setVerifyingId(null);
+    }
+  };
+
   return (
     <main className="deck-bg min-h-screen py-8">
       <div className="container space-y-6">
@@ -148,7 +183,7 @@ const Dashboard = () => {
               <p className="meta-chip bg-primary-foreground/12 text-primary-foreground">Private workspace</p>
               <h1 className="max-w-3xl text-3xl font-bold md:text-4xl">AI fake-news analysis dashboard</h1>
               <p className="max-w-2xl text-primary-foreground/85">
-                Submit text or URL, review confidence signals, and track your analysis history in one place.
+                Hybrid predictions now use backend AI + metadata, with side-by-side precision/recall vs your old rule model.
               </p>
             </div>
             <Button variant="secondary" onClick={() => void signOut()}>
@@ -181,13 +216,15 @@ const Dashboard = () => {
           </Card>
         </section>
 
+        <ModelComparisonCard history={history} />
+
         <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <Card className="glass-panel">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="text-accent" /> Analyze content
               </CardTitle>
-              <CardDescription>Use text or a URL and store the result automatically.</CardDescription>
+              <CardDescription>Use text or a URL, then store both baseline + hybrid predictions automatically.</CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs value={inputType} onValueChange={(value) => setInputType(value as "text" | "url")}>
@@ -254,7 +291,14 @@ const Dashboard = () => {
                 history.map((item) => (
                   <article key={item.id} className="rounded-xl border border-border/80 bg-card/80 p-4">
                     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <Badge className={labelStyles[item.predicted_label] ?? ""}>{item.predicted_label.toUpperCase()}</Badge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className={labelStyles[item.predicted_label] ?? ""}>HYBRID: {item.predicted_label.toUpperCase()}</Badge>
+                        {item.baseline_predicted_label ? (
+                          <Badge variant="outline" className={labelStyles[item.baseline_predicted_label] ?? ""}>
+                            BASELINE: {item.baseline_predicted_label.toUpperCase()}
+                          </Badge>
+                        ) : null}
+                      </div>
                       <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
                     </div>
                     <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
@@ -264,6 +308,35 @@ const Dashboard = () => {
                       <span className="font-semibold">{Math.round(item.confidence)}%</span>
                     </div>
                     <p className="text-sm text-muted-foreground">{item.explanation}</p>
+                    <div className="mt-3 border-t border-border/70 pt-3">
+                      <p className="mb-2 text-xs text-muted-foreground">Set verified label (ground truth) for precision/recall tracking:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {verificationOptions.map((label) => {
+                          const isActive = item.verified_label === label;
+                          return (
+                            <Button
+                              key={`${item.id}-${label}`}
+                              type="button"
+                              size="sm"
+                              variant={isActive ? "default" : "outline"}
+                              disabled={verifyingId === item.id}
+                              onClick={() => void handleSetVerifiedLabel(item.id, label)}
+                            >
+                              {label}
+                            </Button>
+                          );
+                        })}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={verifyingId === item.id || !item.verified_label}
+                          onClick={() => void handleSetVerifiedLabel(item.id, null)}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
                   </article>
                 ))
               )}

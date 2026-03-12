@@ -16,6 +16,10 @@ export type Database = {
     Tables: {
       news_checks: {
         Row: {
+          analysis_metadata: Json
+          baseline_confidence: number | null
+          baseline_explanation: string | null
+          baseline_predicted_label: string | null
           confidence: number
           created_at: string
           explanation: string | null
@@ -27,8 +31,14 @@ export type Database = {
           source_url: string | null
           updated_at: string
           user_id: string
+          verified_at: string | null
+          verified_label: string | null
         }
         Insert: {
+          analysis_metadata?: Json
+          baseline_confidence?: number | null
+          baseline_explanation?: string | null
+          baseline_predicted_label?: string | null
           confidence: number
           created_at?: string
           explanation?: string | null
@@ -40,8 +50,14 @@ export type Database = {
           source_url?: string | null
           updated_at?: string
           user_id: string
+          verified_at?: string | null
+          verified_label?: string | null
         }
         Update: {
+          analysis_metadata?: Json
+          baseline_confidence?: number | null
+          baseline_explanation?: string | null
+          baseline_predicted_label?: string | null
           confidence?: number
           created_at?: string
           explanation?: string | null
@@ -53,6 +69,8 @@ export type Database = {
           source_url?: string | null
           updated_at?: string
           user_id?: string
+          verified_at?: string | null
+          verified_label?: string | null
         }
         Relationships: []
       }
