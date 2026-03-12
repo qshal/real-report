@@ -90,8 +90,6 @@ const Dashboard = () => {
     }
 
     const parsedPayload = parsed.data as { inputType: "text"; text: string } | { inputType: "url"; url: string };
-    const rawInput = parsedPayload.inputType === "text" ? parsedPayload.text : parsedPayload.url;
-    const baselinePrediction = predictFakeNews(rawInput);
 
     setSubmitting(true);
 
