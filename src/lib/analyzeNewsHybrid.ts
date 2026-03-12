@@ -28,18 +28,10 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   const isUrl = payload.inputType === "url";
   const claim = extractClaim(content);
 
-  const geminiKey = getGeminiApiKey();
-  if (!geminiKey) {
-    return {
-      label: "misleading",
-      confidence: 50,
-      explanation: "Configuration Error: VITE_GEMINI_API_KEY not set. Please add your Gemini API key to Vercel environment variables.",
-      modelName: "config-error",
-      metadata: { claim, error: "Missing API key" },
-    };
-  }
+  // OpenRouter API key is optional - free tier works without it
+  const apiKey = getGeminiApiKey();
 
-  const aiResult = await analyzeWithAI(content, geminiKey);
+  const aiResult = await analyzeWithAI(content, apiKey);
   if (!aiResult || aiResult.confidence === 0) {
     return {
       label: "misleading",
