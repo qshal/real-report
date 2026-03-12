@@ -1,223 +1,247 @@
 /**
- * Blockchain API Integration Layer
- * 
- * Three-Layer Architecture:
- * 1. Smart Contract Layer: Solidity contract on Polygon/Ethereum
- * 2. Backend Service Layer: Python/Node.js Web3 integration
- * 3. API Integration Layer: This file - automatic storage after verification
+ * TruthChain API Integration
+ * Connects to the Python TruthChain backend service
  */
 
-import { supabase } from "@/integrations/supabase/client";
+const BLOCKCHAIN_API_BASE = import.meta.env.VITE_BLOCKCHAIN_API_URL || 'http://localhost:5000/api/blockchain';
 
-const BACKEND_URL = import.meta.env.VITE_BLOCKCHAIN_BACKEND_URL || 'http://localhost:5000';
-const USE_EDGE_FUNCTION = import.meta.env.VITE_USE_EDGE_FUNCTION === 'true';
+export interface BlockchainStatus {
+  connected: boolean;
+  network?: string;
+  chain_id?: number;
+  contract_address?: string;
+  wallet_address?: string;
+  explorer_url?: string;
+  storage_enabled?: boolean;
+  total_verifications?: number;
+  real_news_count?: number;
+  fake_news_count?: number;
+  accuracy_percent?: number;
+}
 
 export interface BlockchainStoreResult {
   success: boolean;
-  txHash?: string;
-  contentHash?: string;
-  resultHash?: string;
+  tx_hash?: string;
+  article_hash?: string;
+  network?: string;
+  explorer_url?: string;
+  duplicate?: boolean;
+  previously_verified?: boolean;
+  is_real?: boolean;
+  trust_score?: number;
+  verification_date?: string;
+  message?: string;
   error?: string;
 }
 
 export interface BlockchainVerifyResult {
   verified: boolean;
   details?: {
-    result_hash: string;
+    previously_verified: boolean;
+    article_hash: string;
+    is_real: boolean;
+    trust_score: number;
+    source: string;
     timestamp: number;
     verifier: string;
+    pipeline_version: string;
+    confidence: number;
+    verification_method: string;
+    verification_date: string;
   };
   error?: string;
 }
 
-/**
- * Store analysis on blockchain via backend service
- * Layer 3: API Integration - calls Layer 2 (Backend Service)
- */
-export async function storeAnalysisOnBackend(
-  content: string,
-  label: string,
-  confidence: number
-): Promise<BlockchainStoreResult> {
-  try {
-    if (USE_EDGE_FUNCTION) {
-      // Use Supabase Edge Function
-      const { data, error } = await supabase.functions.invoke('blockchain-service', {
-        body: {
-          action: 'store',
-          data: {
-            content,
-            label,
-            confidence,
-            timestamp: Math.floor(Date.now() / 1000),
-          },
-        },
-      });
-
-      if (error) throw error;
-      return data;
-    } else {
-      // Use Python backend service
-      const response = await fetch(`${BACKEND_URL}/api/blockchain/store`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content,
-          label,
-          confidence,
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return {
-          success: false,
-          error: data.error || 'Failed to store on blockchain',
-        };
-      }
-
-      return data;
-    }
-  } catch (error) {
-    console.error('Blockchain API error:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
+export interface BlockchainHashResult {
+  article_hash: string;
+  timestamp: number;
+  network: string;
 }
 
-/**
- * Verify analysis on blockchain
- */
-export async function verifyAnalysisOnBackend(
-  content: string,
-  label: string,
-  confidence: number,
-  timestamp: number
-): Promise<BlockchainVerifyResult> {
-  try {
-    if (USE_EDGE_FUNCTION) {
-      const { data, error } = await supabase.functions.invoke('blockchain-service', {
-        body: {
-          action: 'verify',
-          data: {
-            contentHash: await generateContentHash(content),
-            resultHash: await generateResultHash(label, confidence, timestamp),
-          },
-        },
-      });
-
-      if (error) throw error;
-      return data;
-    } else {
-      const response = await fetch(`${BACKEND_URL}/api/blockchain/verify`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          content,
-          label,
-          confidence,
-          timestamp,
-        }),
-      });
-
-      const data = await response.json();
-      
-      if (!response.ok) {
-        return {
-          verified: false,
-          error: data.error || 'Verification failed',
-        };
-      }
-
-      return data;
-    }
-  } catch (error) {
-    console.error('Blockchain verification error:', error);
-    return {
-      verified: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
+export interface BlockchainStats {
+  storage_enabled: boolean;
+  network?: string;
+  contract_address?: string;
+  total_verifications?: number;
+  real_news_count?: number;
+  fake_news_count?: number;
+  accuracy_percent?: number;
+  explorer_url?: string;
+  error?: string;
 }
 
 /**
  * Get blockchain service status
  */
-export async function getBlockchainStatus(): Promise<{
-  connected: boolean;
-  contractAddress?: string;
-  rpcUrl?: string;
-  walletAddress?: string;
-}> {
+export async function getBlockchainApiStatus(): Promise<BlockchainStatus> {
   try {
-    if (USE_EDGE_FUNCTION) {
-      const { data, error } = await supabase.functions.invoke('blockchain-service', {
-        body: { action: 'status' },
-      });
-
-      if (error) throw error;
-      return data;
-    } else {
-      const response = await fetch(`${BACKEND_URL}/api/blockchain/status`);
-      return await response.json();
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/status`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    return await response.json();
   } catch (error) {
-    console.error('Status check error:', error);
+    console.error('Blockchain API status check failed:', error);
+    return { connected: false };
+  }
+}
+
+/**
+ * Store news verification on blockchain via backend service
+ */
+export async function storeVerificationViaApi(
+  content: string,
+  label: string,
+  confidence: number,
+  trustScore?: number,
+  sourceUrl?: string,
+  verificationMethod: string = "multi_model_ensemble"
+): Promise<BlockchainStoreResult> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/store`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content,
+        label,
+        confidence,
+        trust_score: trustScore || confidence,
+        source_url: sourceUrl,
+        verification_method: verificationMethod,
+      }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        success: false,
+        error: result.error || `HTTP ${response.status}`,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Blockchain API store failed:', error);
     return {
-      connected: false,
+      success: false,
+      error: error instanceof Error ? error.message : 'Network error',
     };
   }
 }
 
 /**
- * Generate SHA-256 hash of content
+ * Verify if article was previously verified via backend service
  */
-export async function generateContentHash(content: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(content);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+export async function verifyArticleViaApi(
+  content: string
+): Promise<BlockchainVerifyResult> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content,
+      }),
+    });
+
+    const result = await response.json();
+    
+    if (!response.ok) {
+      return {
+        verified: false,
+        error: result.error || `HTTP ${response.status}`,
+      };
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Blockchain API verify failed:', error);
+    return {
+      verified: false,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
+  }
 }
 
 /**
- * Generate result hash from analysis outcome
+ * Get blockchain statistics
  */
-export async function generateResultHash(
-  label: string,
-  confidence: number,
-  timestamp: number
-): Promise<string> {
-  const data = `${label}:${confidence}:${timestamp}`;
-  const encoder = new TextEncoder();
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(data));
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return '0x' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+export async function getBlockchainStatsViaApi(): Promise<BlockchainStats> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/stats`);
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Blockchain API stats failed:', error);
+    return {
+      storage_enabled: false,
+      error: error instanceof Error ? error.message : 'Network error',
+    };
+  }
 }
 
 /**
- * Automatic storage after verification
- * This is called automatically when an analysis is verified
+ * Generate article hash without storing
  */
-export async function autoStoreOnBlockchain(
-  content: string,
-  label: string,
-  confidence: number,
-  verified: boolean
-): Promise<BlockchainStoreResult | null> {
-  // Only store if analysis is verified
-  if (!verified) {
-    console.log('Analysis not verified, skipping blockchain storage');
+export async function generateHashViaApi(
+  content: string
+): Promise<BlockchainHashResult | null> {
+  try {
+    const response = await fetch(`${BLOCKCHAIN_API_BASE}/hash`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        content,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Blockchain API hash generation failed:', error);
     return null;
   }
+}
 
-  console.log('Auto-storing verified analysis on blockchain...');
-  return await storeAnalysisOnBackend(content, label, confidence);
+/**
+ * Check for duplicate verification before analysis
+ */
+export async function checkDuplicateVerification(
+  content: string
+): Promise<{
+  isDuplicate: boolean;
+  previousVerification?: BlockchainVerifyResult['details'];
+  error?: string;
+}> {
+  try {
+    const result = await verifyArticleViaApi(content);
+    
+    if (result.error) {
+      return { isDuplicate: false, error: result.error };
+    }
+    
+    return {
+      isDuplicate: result.verified,
+      previousVerification: result.details,
+    };
+  } catch (error) {
+    return {
+      isDuplicate: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }

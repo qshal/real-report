@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
-import { storeAnalysisOnBackend, getBlockchainStatus } from "@/lib/blockchainApi";
+import { storeVerificationViaApi } from "@/lib/blockchainApi";
 
 type Row = {
   predicted_label: string;
@@ -95,15 +95,21 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
 
     setStoring(true);
     try {
-      const result = await storeAnalysisOnBackend(
+      const result = await storeVerificationViaApi(
         content,
         item.predicted_label,
-        item.confidence
+        item.confidence,
+        item.confidence, // Use confidence as trust score
+        item.source_url || undefined,
+        "dashboard_manual_store"
       );
 
-      if (result.success && result.txHash) {
-        toast.success("Analysis stored on blockchain!");
-        toast.info(`Transaction: ${result.txHash.slice(0, 20)}...`);
+      if (result.success && result.tx_hash) {
+        toast.success("Verification stored on TruthChain!");
+        toast.info(`Transaction: ${result.tx_hash.slice(0, 20)}...`);
+        setStored(true);
+      } else if (result.duplicate) {
+        toast.info("Article was already verified on blockchain");
         setStored(true);
       } else {
         toast.error(result.error || "Failed to store on blockchain");
@@ -148,7 +154,7 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
               {storing ? "Storing..." : stored ? "Stored on Blockchain ✓" : "Store on Blockchain"}
             </Button>
             <p className="text-xs text-muted-foreground mt-1 text-center">
-              Store analysis hash on Ethereum for immutable verification
+              Store verification hash on TruthChain for immutable proof
             </p>
           </div>
 

@@ -1,7 +1,7 @@
 """
-Blockchain Backend Service
+TruthChain Blockchain Backend Service
 Three-Layer Integration:
-1. Smart Contract Layer: Solidity contract on Polygon/Ethereum
+1. Smart Contract Layer: TruthChain.sol on Polygon/Ethereum
 2. Backend Service Layer: Python Web3 integration (this file)
 3. API Integration Layer: Automatic storage after verification
 """
@@ -10,54 +10,115 @@ import os
 import hashlib
 import json
 from datetime import datetime
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from dataclasses import dataclass
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from web3 import Web3
 from eth_account import Account
+import time
 
 app = Flask(__name__)
 CORS(app)
 
+# Multi-Network Configuration
+NETWORK = os.getenv('BLOCKCHAIN_NETWORK', 'polygon')
+NETWORKS = {
+    'polygon': {
+        'rpc_url': os.getenv('POLYGON_RPC_URL', 'https://polygon-rpc.com'),
+        'chain_id': 137,
+        'name': 'Polygon Mainnet',
+        'explorer': 'https://polygonscan.com'
+    },
+    'mumbai': {
+        'rpc_url': os.getenv('MUMBAI_RPC_URL', 'https://rpc-mumbai.maticvigil.com'),
+        'chain_id': 80001,
+        'name': 'Polygon Mumbai Testnet',
+        'explorer': 'https://mumbai.polygonscan.com'
+    },
+    'ethereum': {
+        'rpc_url': os.getenv('ETHEREUM_RPC_URL', 'https://mainnet.infura.io/v3/YOUR_PROJECT_ID'),
+        'chain_id': 1,
+        'name': 'Ethereum Mainnet',
+        'explorer': 'https://etherscan.io'
+    },
+    'sepolia': {
+        'rpc_url': os.getenv('SEPOLIA_RPC_URL', 'https://rpc.sepolia.org'),
+        'chain_id': 11155111,
+        'name': 'Sepolia Testnet',
+        'explorer': 'https://sepolia.etherscan.io'
+    }
+}
+
 # Configuration
 CONTRACT_ADDRESS = os.getenv('CONTRACT_ADDRESS', '')
-RPC_URL = os.getenv('ETHEREUM_RPC_URL', 'https://polygon-rpc.com')
 PRIVATE_KEY = os.getenv('BLOCKCHAIN_PRIVATE_KEY', '')
+PIPELINE_VERSION = os.getenv('PIPELINE_VERSION', '4.0.0')
 
-# Initialize Web3
-w3 = Web3(Web3.HTTPProvider(RPC_URL))
+# Initialize Web3 with selected network
+network_config = NETWORKS.get(NETWORK, NETWORKS['polygon'])
+w3 = Web3(Web3.HTTPProvider(network_config['rpc_url']))
 
-# Contract ABI
+# Enhanced Contract ABI for TruthChain
 CONTRACT_ABI = json.loads('''[
   {
     "inputs": [
-      {"name": "contentHash", "type": "bytes32"},
-      {"name": "resultHash", "type": "bytes32"},
-      {"name": "timestamp", "type": "uint256"}
+      {"name": "_articleHash", "type": "string"},
+      {"name": "_isReal", "type": "bool"},
+      {"name": "_trustScore", "type": "uint256"},
+      {"name": "_source", "type": "string"},
+      {"name": "_pipelineVersion", "type": "string"},
+      {"name": "_confidence", "type": "uint256"},
+      {"name": "_verificationMethod", "type": "string"}
     ],
-    "name": "storeAnalysis",
+    "name": "storeNewsHash",
     "outputs": [{"name": "", "type": "bool"}],
     "stateMutability": "nonpayable",
     "type": "function"
   },
   {
-    "inputs": [{"name": "contentHash", "type": "bytes32"}],
-    "name": "getAnalysis",
+    "inputs": [{"name": "_articleHash", "type": "string"}],
+    "name": "verifyNewsHash",
     "outputs": [
-      {"name": "resultHash", "type": "bytes32"},
-      {"name": "timestamp", "type": "uint256"},
-      {"name": "verifier", "type": "address"}
+      {"name": "exists", "type": "bool"},
+      {"name": "isReal", "type": "bool"},
+      {"name": "trustScore", "type": "uint256"}
     ],
     "stateMutability": "view",
     "type": "function"
   },
   {
-    "inputs": [
-      {"name": "contentHash", "type": "bytes32"},
-      {"name": "resultHash", "type": "bytes32"}
+    "inputs": [{"name": "_articleHash", "type": "string"}],
+    "name": "getVerificationStatus",
+    "outputs": [
+      {"name": "exists", "type": "bool"},
+      {"name": "isReal", "type": "bool"},
+      {"name": "trustScore", "type": "uint256"},
+      {"name": "source", "type": "string"},
+      {"name": "timestamp", "type": "uint256"},
+      {"name": "verifier", "type": "address"},
+      {"name": "pipelineVersion", "type": "string"},
+      {"name": "confidence", "type": "uint256"},
+      {"name": "verificationMethod", "type": "string"}
     ],
-    "name": "verifyAnalysis",
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getBlockchainStats",
+    "outputs": [
+      {"name": "total", "type": "uint256"},
+      {"name": "realCount", "type": "uint256"},
+      {"name": "fakeCount", "type": "uint256"},
+      {"name": "accuracy", "type": "uint256"}
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [{"name": "_articleHash", "type": "string"}],
+    "name": "articleExists",
     "outputs": [{"name": "", "type": "bool"}],
     "stateMutability": "view",
     "type": "function"
@@ -66,53 +127,102 @@ CONTRACT_ABI = json.loads('''[
 
 
 @dataclass
-class AnalysisRecord:
-    """Represents an analysis record for blockchain storage"""
-    content_hash: str
-    result_hash: str
-    timestamp: int
+class NewsVerificationRecord:
+    """Represents a news verification record for blockchain storage"""
+    article_hash: str
+    is_real: bool
+    trust_score: int  # 0-100
+    source: str
+    pipeline_version: str
+    confidence: int  # 0-100
+    verification_method: str
     tx_hash: Optional[str] = None
     block_number: Optional[int] = None
 
 
-def generate_content_hash(content: str) -> str:
-    """Generate SHA-256 hash of content"""
-    return '0x' + hashlib.sha256(content.encode()).hexdigest()
+def generate_article_hash(article_text: str) -> str:
+    """Generate SHA-256 hash of article content"""
+    return hashlib.sha256(article_text.encode('utf-8')).hexdigest()
 
 
-def generate_result_hash(label: str, confidence: float, timestamp: int) -> str:
-    """Generate result hash from analysis outcome"""
-    data = f"{label}:{confidence}:{timestamp}"
-    return '0x' + hashlib.sha256(data.encode()).hexdigest()
+def extract_domain(url: str) -> str:
+    """Extract domain from URL"""
+    try:
+        from urllib.parse import urlparse
+        return urlparse(url).netloc.replace('www.', '')
+    except:
+        return 'unknown'
 
 
-class BlockchainService:
-    """Service for interacting with the blockchain"""
+class TruthChainService:
+    """Service for interacting with TruthChain blockchain"""
     
     def __init__(self):
         self.w3 = w3
         self.contract = None
         self.account = None
+        self.network_config = network_config
         
         if CONTRACT_ADDRESS and PRIVATE_KEY:
-            self.contract = self.w3.eth.contract(
-                address=Web3.to_checksum_address(CONTRACT_ADDRESS),
-                abi=CONTRACT_ABI
-            )
-            self.account = Account.from_key(PRIVATE_KEY)
+            try:
+                self.contract = self.w3.eth.contract(
+                    address=Web3.to_checksum_address(CONTRACT_ADDRESS),
+                    abi=CONTRACT_ABI
+                )
+                self.account = Account.from_key(PRIVATE_KEY)
+                print(f"✅ Connected to {network_config['name']}")
+                print(f"📍 Contract: {CONTRACT_ADDRESS}")
+                print(f"👤 Wallet: {self.account.address}")
+            except Exception as e:
+                print(f"❌ Blockchain initialization failed: {e}")
     
     def is_configured(self) -> bool:
         """Check if blockchain is properly configured"""
         return self.contract is not None and self.account is not None
     
-    def store_analysis(
+    def check_duplicate(self, article_text: str) -> Tuple[bool, Optional[Dict]]:
+        """Check if article was previously verified"""
+        if not self.is_configured():
+            return False, None
+        
+        try:
+            article_hash = generate_article_hash(article_text)
+            exists, is_real, trust_score = self.contract.functions.verifyNewsHash(article_hash).call()
+            
+            if exists:
+                # Get full verification details
+                full_details = self.contract.functions.getVerificationStatus(article_hash).call()
+                return True, {
+                    'previously_verified': True,
+                    'article_hash': article_hash,
+                    'is_real': full_details[1],
+                    'trust_score': full_details[2],
+                    'source': full_details[3],
+                    'timestamp': full_details[4],
+                    'verifier': full_details[5],
+                    'pipeline_version': full_details[6],
+                    'confidence': full_details[7],
+                    'verification_method': full_details[8],
+                    'verification_date': datetime.fromtimestamp(full_details[4]).isoformat()
+                }
+            
+            return False, None
+            
+        except Exception as e:
+            print(f"❌ Duplicate check failed: {e}")
+            return False, None
+    
+    def store_verification(
         self,
-        content: str,
-        label: str,
-        confidence: float
+        article_text: str,
+        prediction: str,
+        trust_score: float,
+        confidence: float,
+        source_url: str = None,
+        verification_method: str = "multi_model_ensemble"
     ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Store analysis on blockchain
+        Store news verification on blockchain
         
         Returns:
             (success: bool, tx_hash: Optional[str], error: Optional[str])
@@ -121,21 +231,40 @@ class BlockchainService:
             return False, None, "Blockchain not configured"
         
         try:
-            # Generate hashes
-            content_hash = generate_content_hash(content)
-            timestamp = int(datetime.now().timestamp())
-            result_hash = generate_result_hash(label, confidence, timestamp)
+            # Generate article hash
+            article_hash = generate_article_hash(article_text)
+            
+            # Convert prediction to boolean
+            is_real = prediction.lower() in ['real', 'true', 'legitimate']
+            
+            # Convert scores to integers (0-100)
+            trust_score_int = max(0, min(100, int(trust_score * 100)))
+            confidence_int = max(0, min(100, int(confidence * 100)))
+            
+            # Extract source domain
+            source = extract_domain(source_url) if source_url else 'unknown'
+            
+            # Check if already exists
+            exists = self.contract.functions.articleExists(article_hash).call()
+            if exists:
+                print(f"⚠️ Article already verified: {article_hash[:16]}...")
+                return True, None, "Article already verified"
             
             # Build transaction
-            tx = self.contract.functions.storeAnalysis(
-                content_hash,
-                result_hash,
-                timestamp
+            tx = self.contract.functions.storeNewsHash(
+                article_hash,
+                is_real,
+                trust_score_int,
+                source,
+                PIPELINE_VERSION,
+                confidence_int,
+                verification_method
             ).build_transaction({
                 'from': self.account.address,
                 'nonce': self.w3.eth.get_transaction_count(self.account.address),
-                'gas': 200000,
+                'gas': 300000,  # Increased gas limit for complex transaction
                 'gasPrice': self.w3.eth.gas_price,
+                'chainId': network_config['chain_id']
             })
             
             # Sign and send transaction
@@ -143,95 +272,104 @@ class BlockchainService:
             tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
             
             # Wait for receipt
-            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+            receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash, timeout=120)
             
             if receipt['status'] == 1:
+                print(f"✅ Verification stored: {tx_hash.hex()}")
                 return True, tx_hash.hex(), None
             else:
                 return False, None, "Transaction failed"
                 
         except Exception as e:
+            print(f"❌ Blockchain storage error: {e}")
             return False, None, str(e)
     
-    def verify_analysis(
-        self,
-        content: str,
-        label: str,
-        confidence: float,
-        timestamp: int
-    ) -> Tuple[bool, Optional[Dict], Optional[str]]:
-        """
-        Verify if analysis exists on blockchain
-        
-        Returns:
-            (verified: bool, details: Optional[Dict], error: Optional[str])
-        """
+    def get_blockchain_stats(self) -> Dict:
+        """Get blockchain storage statistics"""
         if not self.is_configured():
-            return False, None, "Blockchain not configured"
+            return {
+                'storage_enabled': False,
+                'error': 'Blockchain not configured'
+            }
         
         try:
-            content_hash = generate_content_hash(content)
-            result_hash = generate_result_hash(label, confidence, timestamp)
+            total, real_count, fake_count, accuracy = self.contract.functions.getBlockchainStats().call()
             
-            # Check if analysis exists and matches
-            is_valid = self.contract.functions.verifyAnalysis(
-                content_hash,
-                result_hash
-            ).call()
-            
-            if is_valid:
-                result_hash, ts, verifier = self.contract.functions.getAnalysis(
-                    content_hash
-                ).call()
-                
-                return True, {
-                    'result_hash': result_hash,
-                    'timestamp': ts,
-                    'verifier': verifier,
-                }, None
-            
-            return False, None, None
+            return {
+                'storage_enabled': True,
+                'network': network_config['name'],
+                'contract_address': CONTRACT_ADDRESS,
+                'total_verifications': total,
+                'real_news_count': real_count,
+                'fake_news_count': fake_count,
+                'accuracy_percent': accuracy,
+                'explorer_url': f"{network_config['explorer']}/address/{CONTRACT_ADDRESS}"
+            }
             
         except Exception as e:
-            return False, None, str(e)
+            return {
+                'storage_enabled': False,
+                'error': str(e)
+            }
 
 
 # Initialize service
-blockchain_service = BlockchainService()
+truthchain_service = TruthChainService()
 
 
 @app.route('/api/blockchain/status', methods=['GET'])
 def get_status():
     """Get blockchain service status"""
+    stats = truthchain_service.get_blockchain_stats()
+    
     return jsonify({
-        'connected': blockchain_service.is_configured(),
+        'connected': truthchain_service.is_configured(),
+        'network': network_config['name'],
+        'chain_id': network_config['chain_id'],
         'contract_address': CONTRACT_ADDRESS,
-        'rpc_url': RPC_URL,
-        'wallet_address': blockchain_service.account.address if blockchain_service.account else None,
+        'wallet_address': truthchain_service.account.address if truthchain_service.account else None,
+        'explorer_url': network_config['explorer'],
+        **stats
     })
 
 
 @app.route('/api/blockchain/store', methods=['POST'])
-def store_analysis():
-    """Store analysis on blockchain"""
+def store_verification():
+    """Store news verification on blockchain"""
     data = request.json
     
-    content = data.get('content', '')
-    label = data.get('label', '')
-    confidence = data.get('confidence', 0)
+    article_text = data.get('content', '')
+    prediction = data.get('label', '')
+    trust_score = data.get('trust_score', data.get('confidence', 0)) / 100.0
+    confidence = data.get('confidence', 0) / 100.0
+    source_url = data.get('source_url')
+    verification_method = data.get('verification_method', 'multi_model_ensemble')
     
-    if not content or not label:
-        return jsonify({'error': 'Missing required fields'}), 400
+    if not article_text or not prediction:
+        return jsonify({'error': 'Missing required fields: content and label'}), 400
     
-    success, tx_hash, error = blockchain_service.store_analysis(
-        content, label, confidence
+    # Check for duplicates first
+    is_duplicate, duplicate_info = truthchain_service.check_duplicate(article_text)
+    if is_duplicate:
+        return jsonify({
+            'success': True,
+            'duplicate': True,
+            'message': 'Article was previously verified',
+            **duplicate_info
+        })
+    
+    success, tx_hash, error = truthchain_service.store_verification(
+        article_text, prediction, trust_score, confidence, source_url, verification_method
     )
     
     if success:
         return jsonify({
             'success': True,
             'tx_hash': tx_hash,
-            'message': 'Analysis stored on blockchain',
+            'article_hash': generate_article_hash(article_text),
+            'network': network_config['name'],
+            'explorer_url': f"{network_config['explorer']}/tx/{tx_hash}" if tx_hash else None,
+            'message': 'Verification stored on blockchain',
         })
     else:
         return jsonify({
@@ -241,50 +379,51 @@ def store_analysis():
 
 
 @app.route('/api/blockchain/verify', methods=['POST'])
-def verify_analysis():
-    """Verify analysis on blockchain"""
+def verify_article():
+    """Check if article was previously verified"""
     data = request.json
     
-    content = data.get('content', '')
-    label = data.get('label', '')
-    confidence = data.get('confidence', 0)
-    timestamp = data.get('timestamp', 0)
+    article_text = data.get('content', '')
+    if not article_text:
+        return jsonify({'error': 'Missing content field'}), 400
     
-    if not content or not label:
-        return jsonify({'error': 'Missing required fields'}), 400
-    
-    verified, details, error = blockchain_service.verify_analysis(
-        content, label, confidence, timestamp
-    )
-    
-    if error:
-        return jsonify({'error': error}), 500
+    is_duplicate, duplicate_info = truthchain_service.check_duplicate(article_text)
     
     return jsonify({
-        'verified': verified,
-        'details': details,
+        'verified': is_duplicate,
+        'details': duplicate_info
     })
 
 
+@app.route('/api/blockchain/stats', methods=['GET'])
+def get_blockchain_stats():
+    """Get comprehensive blockchain statistics"""
+    return jsonify(truthchain_service.get_blockchain_stats())
+
+
 @app.route('/api/blockchain/hash', methods=['POST'])
-def generate_hashes():
-    """Generate content and result hashes without storing"""
+def generate_hash():
+    """Generate article hash without storing"""
     data = request.json
     
-    content = data.get('content', '')
-    label = data.get('label', '')
-    confidence = data.get('confidence', 0)
+    article_text = data.get('content', '')
+    if not article_text:
+        return jsonify({'error': 'Missing content field'}), 400
     
-    content_hash = generate_content_hash(content)
-    timestamp = int(datetime.now().timestamp())
-    result_hash = generate_result_hash(label, confidence, timestamp)
+    article_hash = generate_article_hash(article_text)
     
     return jsonify({
-        'content_hash': content_hash,
-        'result_hash': result_hash,
-        'timestamp': timestamp,
+        'article_hash': article_hash,
+        'timestamp': int(time.time()),
+        'network': network_config['name']
     })
 
 
 if __name__ == '__main__':
+    print(f"🚀 Starting TruthChain Blockchain Service")
+    print(f"🌐 Network: {network_config['name']}")
+    print(f"📡 RPC: {network_config['rpc_url']}")
+    print(f"🔗 Contract: {CONTRACT_ADDRESS or 'Not configured'}")
+    print(f"💾 Storage: {'Enabled' if truthchain_service.is_configured() else 'Disabled'}")
+    
     app.run(debug=True, port=5000)
