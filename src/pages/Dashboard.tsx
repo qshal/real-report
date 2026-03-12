@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import type { Tables } from "@/integrations/supabase/types";
+import type { Json, Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
 import { analysisSchema, predictFakeNews, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
