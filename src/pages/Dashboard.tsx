@@ -1,17 +1,19 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { AnalysisOverviewCards } from "@/components/dashboard/AnalysisOverviewCards";
+import { LatestAnalysisCard } from "@/components/dashboard/LatestAnalysisCard";
 import { ModelComparisonCard } from "@/components/dashboard/ModelComparisonCard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import type { Json, Tables } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
+import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
 import { analysisSchema, predictFakeNews, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
@@ -64,13 +66,7 @@ const Dashboard = () => {
       .catch(() => toast.error("Failed to load analysis history."));
   }, [user]);
 
-  const stats = useMemo(() => {
-    const total = history.length;
-    const fakeCount = history.filter((row) => row.predicted_label === "fake").length;
-    const avgConfidence = total > 0 ? Math.round(history.reduce((sum, row) => sum + row.confidence, 0) / total) : 0;
-
-    return { total, fakeCount, avgConfidence };
-  }, [history]);
+  const latestResult = history[0];
 
   const handleAnalyze = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -116,7 +112,7 @@ const Dashboard = () => {
       })) as NewsCheck;
 
       setHistory((prev) => [saved, ...prev]);
-      toast.success("Hybrid analysis saved to your dashboard.");
+      toast.success("Analysis completed and stored.");
 
       if (parsedPayload.inputType === "text") {
         setTextValue("");
@@ -183,7 +179,7 @@ const Dashboard = () => {
               <p className="meta-chip bg-primary-foreground/12 text-primary-foreground">Private workspace</p>
               <h1 className="max-w-3xl text-3xl font-bold md:text-4xl">AI fake-news analysis dashboard</h1>
               <p className="max-w-2xl text-primary-foreground/85">
-                Hybrid predictions now use backend AI + metadata, with side-by-side precision/recall vs your old rule model.
+                Analyze claims, inspect confidence and trust signals, then verify labels to improve model evaluation quality.
               </p>
             </div>
             <Button variant="secondary" onClick={() => void signOut()}>
@@ -192,29 +188,7 @@ const Dashboard = () => {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-3">
-          <Card className="glass-panel">
-            <CardHeader className="pb-3">
-              <CardDescription>Total analyses</CardDescription>
-              <CardTitle>{stats.total}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="glass-panel">
-            <CardHeader className="pb-3">
-              <CardDescription>High-risk detections</CardDescription>
-              <CardTitle>{stats.fakeCount}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card className="glass-panel">
-            <CardHeader className="pb-3">
-              <CardDescription>Average confidence</CardDescription>
-              <CardTitle>{stats.avgConfidence}%</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Progress value={stats.avgConfidence} />
-            </CardContent>
-          </Card>
-        </section>
+        <AnalysisOverviewCards history={history} />
 
         <ModelComparisonCard history={history} />
 
@@ -222,9 +196,11 @@ const Dashboard = () => {
           <Card className="glass-panel">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Sparkles className="text-accent" /> Analyze content
+                <Sparkles className="text-accent" /> Submit for analysis
               </CardTitle>
-              <CardDescription>Use text or a URL, then store both baseline + hybrid predictions automatically.</CardDescription>
+              <CardDescription>
+                Submit text or URL and store baseline plus hybrid outputs with confidence, explanation, and metadata.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Tabs value={inputType} onValueChange={(value) => setInputType(value as "text" | "url")}>
@@ -257,27 +233,31 @@ const Dashboard = () => {
             </CardContent>
           </Card>
 
-          <Card className="glass-panel">
-            <CardHeader>
-              <CardTitle>Profile settings</CardTitle>
-              <CardDescription>Keep your analyst identity updated.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form className="space-y-3" onSubmit={handleProfileSave}>
-                <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" />
-                <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" />
-                <Button type="submit" variant="outline" disabled={savingProfile}>
-                  Save profile
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+          <div className="space-y-4">
+            <Card className="glass-panel">
+              <CardHeader>
+                <CardTitle>Profile settings</CardTitle>
+                <CardDescription>Keep your analyst identity updated.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form className="space-y-3" onSubmit={handleProfileSave}>
+                  <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Display name" />
+                  <Input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" />
+                  <Button type="submit" variant="outline" disabled={savingProfile}>
+                    Save profile
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <LatestAnalysisCard item={latestResult} />
+          </div>
         </section>
 
         <Card className="glass-panel">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Clock3 className="text-brand-highlight" /> Recent analysis history
+              <Clock3 className="text-brand-highlight" /> Analysis history
             </CardTitle>
             <CardDescription>Only your account can view these records.</CardDescription>
           </CardHeader>
@@ -288,57 +268,64 @@ const Dashboard = () => {
                   No analyses yet — run your first check above.
                 </p>
               ) : (
-                history.map((item) => (
-                  <article key={item.id} className="rounded-xl border border-border/80 bg-card/80 p-4">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge className={labelStyles[item.predicted_label] ?? ""}>HYBRID: {item.predicted_label.toUpperCase()}</Badge>
-                        {item.baseline_predicted_label ? (
-                          <Badge variant="outline" className={labelStyles[item.baseline_predicted_label] ?? ""}>
-                            BASELINE: {item.baseline_predicted_label.toUpperCase()}
-                          </Badge>
-                        ) : null}
+                history.map((item) => {
+                  const meta = summarizeAnalysisMetadata(item.analysis_metadata);
+
+                  return (
+                    <article key={item.id} className="rounded-xl border border-border/80 bg-card/80 p-4">
+                      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge className={labelStyles[item.predicted_label] ?? ""}>HYBRID: {item.predicted_label.toUpperCase()}</Badge>
+                          {item.baseline_predicted_label ? (
+                            <Badge variant="outline" className={labelStyles[item.baseline_predicted_label] ?? ""}>
+                              BASELINE: {item.baseline_predicted_label.toUpperCase()}
+                            </Badge>
+                          ) : null}
+                          {meta.riskBand ? <Badge variant="outline">Risk: {meta.riskBand}</Badge> : null}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
-                    </div>
-                    <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-                      <span className="inline-flex items-center gap-1 text-muted-foreground">
-                        <BarChart3 className="h-4 w-4" /> Confidence
-                      </span>
-                      <span className="font-semibold">{Math.round(item.confidence)}%</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{item.explanation}</p>
-                    <div className="mt-3 border-t border-border/70 pt-3">
-                      <p className="mb-2 text-xs text-muted-foreground">Set verified label (ground truth) for precision/recall tracking:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {verificationOptions.map((label) => {
-                          const isActive = item.verified_label === label;
-                          return (
-                            <Button
-                              key={`${item.id}-${label}`}
-                              type="button"
-                              size="sm"
-                              variant={isActive ? "default" : "outline"}
-                              disabled={verifyingId === item.id}
-                              onClick={() => void handleSetVerifiedLabel(item.id, label)}
-                            >
-                              {label}
-                            </Button>
-                          );
-                        })}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          disabled={verifyingId === item.id || !item.verified_label}
-                          onClick={() => void handleSetVerifiedLabel(item.id, null)}
-                        >
-                          Clear
-                        </Button>
+                      <div className="mb-2 flex flex-wrap items-center gap-3 text-sm">
+                        <span className="inline-flex items-center gap-1 text-muted-foreground">
+                          <BarChart3 className="h-4 w-4" /> Confidence
+                        </span>
+                        <span className="font-semibold">{Math.round(item.confidence)}%</span>
+                        {meta.fakeProbability !== null ? <span>Fake probability: <span className="font-semibold">{meta.fakeProbability}%</span></span> : null}
+                        {meta.trustScore !== null ? <span>Trust score: <span className="font-semibold">{meta.trustScore}%</span></span> : null}
                       </div>
-                    </div>
-                  </article>
-                ))
+                      <p className="text-sm text-muted-foreground">{item.explanation}</p>
+                      <div className="mt-3 border-t border-border/70 pt-3">
+                        <p className="mb-2 text-xs text-muted-foreground">Set verified label (ground truth) for precision/recall tracking:</p>
+                        <div className="flex flex-wrap gap-2">
+                          {verificationOptions.map((label) => {
+                            const isActive = item.verified_label === label;
+                            return (
+                              <Button
+                                key={`${item.id}-${label}`}
+                                type="button"
+                                size="sm"
+                                variant={isActive ? "default" : "outline"}
+                                disabled={verifyingId === item.id}
+                                onClick={() => void handleSetVerifiedLabel(item.id, label)}
+                              >
+                                {label}
+                              </Button>
+                            );
+                          })}
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={verifyingId === item.id || !item.verified_label}
+                            onClick={() => void handleSetVerifiedLabel(item.id, null)}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })
               )}
             </div>
           </CardContent>
