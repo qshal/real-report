@@ -153,7 +153,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake|misleading. Consider semantics, writing style, internal consistency, and metadata indicators.",
+              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake. Consider semantics, writing style, internal consistency, and metadata indicators.",
           },
           {
             role: "user",
