@@ -18,8 +18,10 @@ type AnalyzeRequest =
       url: string;
     };
 
-const fakeSignals = ["shocking", "they don't want you to know", "miracle cure", "100% proven", "secret", "hoax"];
-const misleadingSignals = ["sources say", "viral", "breaking", "unverified", "rumor", "maybe"];
+const sensationalSignals = ["shocking", "they don't want you to know", "miracle cure", "100% proven", "secret", "hoax"];
+const speculativeSignals = ["sources say", "viral", "breaking", "unverified", "rumor", "maybe"];
+const inconsistencySignals = ["contradiction", "impossible", "without evidence", "guaranteed", "everyone knows"];
+const referenceSignals = ["according to", "report", "study", "official statement", "source"];
 const riskyDomains = ["beforeitsnews.com", "infowars.com", "naturalnews.com"];
 const trustedDomains = ["reuters.com", "apnews.com", "bbc.com", "nytimes.com", "wsj.com"];
 
@@ -31,27 +33,58 @@ const parseDomain = (inputUrl: string) => {
   }
 };
 
+const countHits = (source: string, list: string[]) => list.filter((signal) => source.includes(signal)).length;
+
 const metadataRiskScore = (payload: AnalyzeRequest) => {
   const sourceText = (payload.inputType === "text" ? payload.text : payload.url).toLowerCase();
-  const fakeHits = fakeSignals.filter((signal) => sourceText.includes(signal)).length;
-  const misleadingHits = misleadingSignals.filter((signal) => sourceText.includes(signal)).length;
+  const sensationalHits = countHits(sourceText, sensationalSignals);
+  const speculativeHits = countHits(sourceText, speculativeSignals);
+  const inconsistencyHits = countHits(sourceText, inconsistencySignals);
+  const referenceHits = countHits(sourceText, referenceSignals);
   const punctuationBoost = (sourceText.match(/!{2,}|\?{2,}/g) ?? []).length;
 
   const domain = payload.inputType === "url" ? parseDomain(payload.url) : null;
   const domainRisk = domain && riskyDomains.some((d) => domain.endsWith(d)) ? 30 : 0;
-  const trustedBonus = domain && trustedDomains.some((d) => domain.endsWith(d)) ? -20 : 0;
+  const trustedBonus = domain && trustedDomains.some((d) => domain.endsWith(d)) ? 18 : 0;
 
-  const score = Math.max(0, Math.min(100, fakeHits * 20 + misleadingHits * 10 + punctuationBoost * 6 + domainRisk + trustedBonus));
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      sensationalHits * 16 + speculativeHits * 10 + inconsistencyHits * 12 + punctuationBoost * 5 + domainRisk - trustedBonus - referenceHits * 6,
+    ),
+  );
+
+  const indicators = [
+    sensationalHits > 0 ? `sensational_language:${sensationalHits}` : null,
+    speculativeHits > 0 ? `speculative_claims:${speculativeHits}` : null,
+    inconsistencyHits > 0 ? `logical_inconsistencies:${inconsistencyHits}` : null,
+    referenceHits === 0 ? "no_credible_references_detected" : `reference_markers:${referenceHits}`,
+    punctuationBoost > 0 ? `excessive_punctuation:${punctuationBoost}` : null,
+    domain ? `source_domain:${domain}` : null,
+  ].filter(Boolean);
+
+  const sourceClass = domain
+    ? riskyDomains.some((d) => domain.endsWith(d))
+      ? "risky"
+      : trustedDomains.some((d) => domain.endsWith(d))
+        ? "trusted"
+        : "unknown"
+    : "not_applicable";
 
   return {
     score,
+    indicators,
     features: {
-      fakeHits,
-      misleadingHits,
+      sensationalHits,
+      speculativeHits,
+      inconsistencyHits,
+      referenceHits,
       punctuationBoost,
       domain,
       domainRisk,
       trustedBonus,
+      sourceClass,
     },
   };
 };
