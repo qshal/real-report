@@ -118,7 +118,7 @@ const Dashboard = () => {
       setHistory((prev) => [saved, ...prev]);
       toast.success("Hybrid analysis saved to your dashboard.");
 
-      if (parsed.data.inputType === "text") {
+      if (parsedPayload.inputType === "text") {
         setTextValue("");
       } else {
         setUrlValue("");
