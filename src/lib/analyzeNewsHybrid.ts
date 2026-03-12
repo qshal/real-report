@@ -403,8 +403,25 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     (newsScore * 0.35) +    // News/NLP: 35% weight
     (sourceScore * 0.25)    // Source: 25% weight
   );
-  
-export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
+
+  // Return a basic result for now - this function needs completion
+  return {
+    label: aiResult.isFactual ? "real" : "fake",
+    confidence: clampConfidence(aiResult.confidence),
+    explanation: `AI verdict: ${aiResult.isFactual ? 'REAL' : 'FAKE'}. ${aiResult.explanation}`,
+    modelName: "truthchain-ai",
+    metadata: {
+      claim: extractClaim(contentToAnalyze),
+      finalTrustScore,
+      aiScore: Math.round(aiResult.confidence),
+      newsScore: Math.round(newsScore),
+      sourceScore: Math.round(sourceScore),
+    },
+  };
+};
+
+// Alternative implementation with duplicate checking
+export const analyzeNewsHybridWithDuplicateCheck = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const isUrl = payload.inputType === "url";
   
   // Extract content for analysis
@@ -641,5 +658,4 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       },
     },
   };
-};
 };
