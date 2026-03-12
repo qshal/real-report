@@ -97,22 +97,25 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
             ) : null}
           </div>
 
-          {/* Component Scores Breakdown */}
+          {/* Component Scores Breakdown - For Reference Only */}
           {componentScores && (
             <>
               <Separator className="my-3" />
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4" /> Trust Score Calculation
+                  <BarChart3 className="h-4 w-4" /> Supplementary Data
                   <Tooltip>
                     <TooltipTrigger>
                       <Info className="h-3 w-3 text-muted-foreground" />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Weighted formula: (AI × 0.40) + (News × 0.35) + (Source × 0.25)</p>
+                      <p>Shown for reference only. Verdict is based on AI analysis only.</p>
                     </TooltipContent>
                   </Tooltip>
                 </h4>
+                <p className="text-xs text-muted-foreground italic">
+                  Verdict: AI only • Below data for context only
+                </p>
                 
                 <div className="space-y-2 text-xs">
                   {/* AI Score */}
@@ -185,9 +188,11 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
                   </div>
                 </div>
 
-                <div className="text-xs text-muted-foreground pt-1">
-                  Final: ({componentScores.aiScore} × 0.40) + ({componentScores.newsScore} × 0.35) + ({componentScores.sourceScore} × 0.25) = <span className="font-semibold">{summary.trustScore}%</span>
-                </div>
+                {componentScores.note && (
+                  <div className="text-xs text-amber-600 pt-1">
+                    Note: {componentScores.note}
+                  </div>
+                )}
               </div>
             </>
           )}

@@ -76,35 +76,19 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(content) : null;
   
-  // Combine AI verdict with news verification
-  let label: PredictionLabel = aiResult.isFactual ? "real" : "fake";
-  let confidence = aiResult.confidence;
-  let confidenceReason = "AI verdict";
+  // AI-ONLY VERDICT: Use only AI for the final label and confidence
+  // News and Source are shown for transparency but don't affect the verdict
+  const label: PredictionLabel = aiResult.isFactual ? "real" : "fake";
+  const confidence = aiResult.confidence;
+  const confidenceReason = "AI verdict";
+  
+  // Build context info for display only (doesn't affect verdict)
   let newsContext = "";
-
-  // Adjust based on news verification if available
   if (newsResult.trustedSourcesFound > 0) {
     if (newsResult.fakeProbability < 30) {
-      // News sources support the claim
-      confidence = Math.min(99, confidence + 10);
-      confidenceReason = "AI + verified by trusted news sources";
       newsContext = ` Verified by ${newsResult.trustedSourcesFound} trusted news source(s).`;
     } else if (newsResult.fakeProbability > 70) {
-      // News sources contradict the claim
-      label = "fake";
-      confidence = Math.min(99, confidence + 15);
-      confidenceReason = "AI + contradicted by news sources";
       newsContext = ` Contradicted by trusted news sources.`;
-    }
-  }
-
-  if (sourceCredibilityResult) {
-    if (sourceCredibilityResult.credibilityScore >= 0.8) {
-      confidence += 6;
-      confidenceReason += " + high-credibility source";
-    } else if (sourceCredibilityResult.credibilityScore <= 0.3) {
-      confidence -= 6;
-      confidenceReason += " + low-credibility source penalty";
     }
   }
 
@@ -148,12 +132,8 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   return {
     label,
     confidence: adjustedConfidence,
-    explanation: `AI verdict: ${label.toUpperCase()}. ${aiResult.explanation}${newsContext}${
-      sourceCredibilityResult
-        ? ` Source: ${sourceCredibilityResult.domain} (credibility ${Math.round(sourceCredibilityResult.credibilityScore * 100)}%).`
-        : ""
-    }`,
-    modelName: isUrl ? "ai+news+source-credibility" : "ai+news-binary",
+    explanation: `AI verdict: ${label.toUpperCase()}. ${aiResult.explanation}`,
+    modelName: "ai-only",
     metadata: {
       claim,
       aiAnalyzed: true,
@@ -163,21 +143,19 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       isFactual: aiResult.isFactual,
       keyClaims: aiResult.keyClaims,
       potentialIssues: aiResult.potentialIssues,
+      // Supplementary info (shown for transparency, not used in verdict)
       sourceDomain: sourceCredibilityResult?.domain || null,
       sourceCredibility: sourceCredibilityResult?.credibilityScore || null,
-      trustScore: finalTrustScore,
+      sourceTier: sourceCredibilityResult?.tier || null,
+      newsContext: newsContext || null,
       fakeProbability,
       riskBand,
-      // Component scores for transparency
+      // Component scores shown for reference only
       componentScores: {
         aiScore: Math.round(aiScore),
         newsScore: Math.round(newsScore),
         sourceScore: Math.round(sourceScore),
-        weights: {
-          ai: "40%",
-          news: "35%",
-          source: "25%"
-        }
+        note: "Shown for reference only - verdict based on AI only"
       },
       newsVerification: {
         trustedSourcesFound: newsResult.trustedSourcesFound,
@@ -188,7 +166,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       },
       supportingArticles: newsResult.supportingArticles.slice(0, 5),
       contradictingArticles: newsResult.contradictingArticles.slice(0, 5),
-      reasoning: "AI verdict combined with real-time news verification and source credibility",
+      reasoning: "Verdict based on AI analysis only. News and Source data shown for supplementary context.",
     },
   };
 };
