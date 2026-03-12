@@ -43,11 +43,12 @@ interface ComponentScores {
   aiScore: number;
   newsScore: number;
   sourceScore: number;
-  weights: {
+  weights?: {
     ai: string;
     news: string;
     source: string;
   };
+  note?: string;
 }
 
 export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
@@ -198,14 +199,38 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
                   )}
                 </div>
 
-                {componentScores.note && (
-                  <div className="text-xs text-amber-600 pt-1">
-                    Note: {componentScores.note}
-                  </div>
-                )}
               </div>
             </>
           )}
+        
+        {/* Common Articles Based on Content */}
+        {supportingArticles && supportingArticles.length > 0 && (
+          <>
+            <Separator className="my-3" />
+            <div className="space-y-2">
+              <h4 className="text-sm font-semibold flex items-center gap-2">
+                <Newspaper className="h-4 w-4" /> Common Articles
+              </h4>
+              <div className="space-y-1">
+                {supportingArticles.slice(0, 3).map((article, idx) => (
+                  <a
+                    key={idx}
+                    href={article.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-2 rounded-md border border-border/50 bg-muted/30 p-2 text-xs hover:bg-muted/50 transition-colors"
+                  >
+                    <ExternalLink className="h-3 w-3 mt-0.5 flex-shrink-0" />
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{article.title}</p>
+                      <p className="text-muted-foreground truncate">{article.source} • {new Date(article.publishedAt).toLocaleDateString()}</p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
         
         {/* News Articles Section */}
         {hasNewsResults && (
