@@ -30,12 +30,24 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const geminiKey = getGeminiApiKey();
   if (!geminiKey) {
-    throw new Error("AI analysis is not configured.");
+    return {
+      label: "misleading",
+      confidence: 50,
+      explanation: "Configuration Error: VITE_GEMINI_API_KEY not set. Please add your Gemini API key to Vercel environment variables.",
+      modelName: "config-error",
+      metadata: { claim, error: "Missing API key" },
+    };
   }
 
   const aiResult = await analyzeWithAI(content, geminiKey);
   if (!aiResult || aiResult.confidence === 0) {
-    throw new Error(aiResult?.explanation || "AI analysis unavailable. Unable to verify content.");
+    return {
+      label: "misleading",
+      confidence: 50,
+      explanation: aiResult?.explanation || "AI analysis failed. Please check your API key.",
+      modelName: "api-error",
+      metadata: { claim, error: aiResult?.explanation || "API failure" },
+    };
   }
 
   const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(content) : null;
