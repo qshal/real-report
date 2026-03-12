@@ -105,9 +105,9 @@ const Dashboard = () => {
         confidence: hybridPrediction.confidence,
         explanation: hybridPrediction.explanation,
         model_name: hybridPrediction.modelName,
-        baseline_predicted_label: baselinePrediction.label,
-        baseline_confidence: baselinePrediction.confidence,
-        baseline_explanation: baselinePrediction.explanation,
+        baseline_predicted_label: null,
+        baseline_confidence: null,
+        baseline_explanation: null,
         analysis_metadata: hybridPrediction.metadata as Json,
       })) as NewsCheck;
 
