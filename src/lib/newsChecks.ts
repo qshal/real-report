@@ -4,7 +4,7 @@ import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase
 type NewsCheck = Tables<"news_checks">;
 type Profile = Tables<"profiles">;
 
-export const listUserNewsChecks = async (userId: string, limit = 20) => {
+export const listUserNewsChecks = async (userId: string, limit = 100) => {
   const { data, error } = await supabase
     .from("news_checks")
     .select("*")
@@ -18,6 +18,23 @@ export const listUserNewsChecks = async (userId: string, limit = 20) => {
 
 export const createNewsCheck = async (payload: TablesInsert<"news_checks">) => {
   const { data, error } = await supabase.from("news_checks").insert(payload).select("*").single();
+  if (error) throw error;
+  return data as NewsCheck;
+};
+
+export const updateNewsCheckVerification = async (
+  newsCheckId: string,
+  userId: string,
+  verifiedLabel: "real" | "fake" | "misleading" | null,
+) => {
+  const { data, error } = await supabase
+    .from("news_checks")
+    .update({ verified_label: verifiedLabel } as TablesUpdate<"news_checks">)
+    .eq("id", newsCheckId)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
   if (error) throw error;
   return data as NewsCheck;
 };
