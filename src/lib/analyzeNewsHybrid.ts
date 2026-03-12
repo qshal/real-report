@@ -45,11 +45,31 @@ const metadataRiskScore = (text: string) => {
   };
 };
 
-// Client-side analysis using ML model + Fact Check API + AI Analysis
+// Client-side analysis: AI first, then Fact Check DB, then ML fallback
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   
-  // Step 1: Check against fact-checking databases
+  // Step 1: Use AI fact-checking as PRIMARY method
+  const geminiKey = getGeminiApiKey();
+  const aiResult = await analyzeWithAI(content, geminiKey);
+  
+  if (aiResult) {
+    const aiLabel = aiResultToLabel(aiResult);
+    return {
+      label: aiLabel.label,
+      confidence: aiLabel.confidence,
+      explanation: aiLabel.explanation,
+      modelName: "gemini-ai-v1.5",
+      metadata: {
+        aiAnalyzed: true,
+        keyClaims: aiResult.keyClaims,
+        potentialIssues: aiResult.potentialIssues,
+        factChecked: false,
+      },
+    };
+  }
+  
+  // Step 2: Check against fact-checking databases (fallback)
   const factCheckApiKey = getFactCheckApiKey();
   const factCheckResult = await analyzeWithFactCheck(content, factCheckApiKey);
   
@@ -72,27 +92,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     };
   }
   
-  // Step 2: Use AI fact-checking for deeper analysis
-  const geminiKey = getGeminiApiKey();
-  const aiResult = await analyzeWithAI(content, geminiKey);
-  
-  if (aiResult) {
-    const aiLabel = aiResultToLabel(aiResult);
-    return {
-      label: aiLabel.label,
-      confidence: aiLabel.confidence,
-      explanation: aiLabel.explanation,
-      modelName: "gemini-ai-v1.5",
-      metadata: {
-        aiAnalyzed: true,
-        keyClaims: aiResult.keyClaims,
-        potentialIssues: aiResult.potentialIssues,
-        factChecked: false,
-      },
-    };
-  }
-  
-  // Step 3: Fall back to ML model if AI is unavailable
+  // Step 3: Fall back to ML model if AI and Fact Check are unavailable
   const prediction = predictFakeNews(content);
   
   // Get metadata risk score
