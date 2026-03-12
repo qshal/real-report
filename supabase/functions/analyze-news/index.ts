@@ -18,8 +18,10 @@ type AnalyzeRequest =
       url: string;
     };
 
-const fakeSignals = ["shocking", "they don't want you to know", "miracle cure", "100% proven", "secret", "hoax"];
-const misleadingSignals = ["sources say", "viral", "breaking", "unverified", "rumor", "maybe"];
+const sensationalSignals = ["shocking", "they don't want you to know", "miracle cure", "100% proven", "secret", "hoax"];
+const speculativeSignals = ["sources say", "viral", "breaking", "unverified", "rumor", "maybe"];
+const inconsistencySignals = ["contradiction", "impossible", "without evidence", "guaranteed", "everyone knows"];
+const referenceSignals = ["according to", "report", "study", "official statement", "source"];
 const riskyDomains = ["beforeitsnews.com", "infowars.com", "naturalnews.com"];
 const trustedDomains = ["reuters.com", "apnews.com", "bbc.com", "nytimes.com", "wsj.com"];
 
@@ -31,27 +33,58 @@ const parseDomain = (inputUrl: string) => {
   }
 };
 
+const countHits = (source: string, list: string[]) => list.filter((signal) => source.includes(signal)).length;
+
 const metadataRiskScore = (payload: AnalyzeRequest) => {
   const sourceText = (payload.inputType === "text" ? payload.text : payload.url).toLowerCase();
-  const fakeHits = fakeSignals.filter((signal) => sourceText.includes(signal)).length;
-  const misleadingHits = misleadingSignals.filter((signal) => sourceText.includes(signal)).length;
+  const sensationalHits = countHits(sourceText, sensationalSignals);
+  const speculativeHits = countHits(sourceText, speculativeSignals);
+  const inconsistencyHits = countHits(sourceText, inconsistencySignals);
+  const referenceHits = countHits(sourceText, referenceSignals);
   const punctuationBoost = (sourceText.match(/!{2,}|\?{2,}/g) ?? []).length;
 
   const domain = payload.inputType === "url" ? parseDomain(payload.url) : null;
   const domainRisk = domain && riskyDomains.some((d) => domain.endsWith(d)) ? 30 : 0;
-  const trustedBonus = domain && trustedDomains.some((d) => domain.endsWith(d)) ? -20 : 0;
+  const trustedBonus = domain && trustedDomains.some((d) => domain.endsWith(d)) ? 18 : 0;
 
-  const score = Math.max(0, Math.min(100, fakeHits * 20 + misleadingHits * 10 + punctuationBoost * 6 + domainRisk + trustedBonus));
+  const score = Math.max(
+    0,
+    Math.min(
+      100,
+      sensationalHits * 16 + speculativeHits * 10 + inconsistencyHits * 12 + punctuationBoost * 5 + domainRisk - trustedBonus - referenceHits * 6,
+    ),
+  );
+
+  const indicators = [
+    sensationalHits > 0 ? `sensational_language:${sensationalHits}` : null,
+    speculativeHits > 0 ? `speculative_claims:${speculativeHits}` : null,
+    inconsistencyHits > 0 ? `logical_inconsistencies:${inconsistencyHits}` : null,
+    referenceHits === 0 ? "no_credible_references_detected" : `reference_markers:${referenceHits}`,
+    punctuationBoost > 0 ? `excessive_punctuation:${punctuationBoost}` : null,
+    domain ? `source_domain:${domain}` : null,
+  ].filter(Boolean);
+
+  const sourceClass = domain
+    ? riskyDomains.some((d) => domain.endsWith(d))
+      ? "risky"
+      : trustedDomains.some((d) => domain.endsWith(d))
+        ? "trusted"
+        : "unknown"
+    : "not_applicable";
 
   return {
     score,
+    indicators,
     features: {
-      fakeHits,
-      misleadingHits,
+      sensationalHits,
+      speculativeHits,
+      inconsistencyHits,
+      referenceHits,
       punctuationBoost,
       domain,
       domainRisk,
       trustedBonus,
+      sourceClass,
     },
   };
 };
@@ -90,6 +123,13 @@ serve(async (req) => {
       });
     }
 
+    if (payload.inputType !== "text" && payload.inputType !== "url") {
+      return new Response(JSON.stringify({ error: "Invalid input type." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) {
       return new Response(JSON.stringify({ error: "AI key is not configured." }), {
@@ -113,7 +153,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are a misinformation classifier. Return ONLY compact JSON: {\"label\":\"real|fake|misleading\",\"confidence\":number,\"explanation\":string}. Use both linguistic signals and metadata risk score.",
+              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake|misleading. Consider semantics, writing style, internal consistency, and metadata indicators.",
           },
           {
             role: "user",
@@ -121,6 +161,7 @@ serve(async (req) => {
               inputType: payload.inputType,
               content,
               metadataRiskScore: metadata.score,
+              indicators: metadata.indicators,
               metadataFeatures: metadata.features,
             }),
           },
@@ -169,28 +210,40 @@ serve(async (req) => {
 
     let finalLabel: PredictionLabel = aiLabel;
     if (metadata.score >= 75 && aiLabel === "misleading") finalLabel = "fake";
-    if (metadata.score <= 25 && aiLabel === "fake" && aiConfidence < 75) finalLabel = "misleading";
+    if (metadata.score <= 20 && aiLabel === "fake" && aiConfidence < 75) finalLabel = "misleading";
 
-    const alignmentBoost =
-      (finalLabel === "fake" && metadata.score >= 60) ||
-      (finalLabel === "real" && metadata.score <= 25) ||
-      (finalLabel === "misleading" && metadata.score > 25 && metadata.score < 60)
+    const labelBias = finalLabel === "fake" ? 14 : finalLabel === "misleading" ? 6 : -8;
+    const fakeProbability = Math.max(1, Math.min(99, Math.round(metadata.score * 0.55 + aiConfidence * 0.45 + labelBias)));
+    const trustScore = Math.max(1, Math.min(99, Math.round(100 - fakeProbability + (metadata.features.trustedBonus > 0 ? 8 : 0))));
+
+    const confidenceAlignmentBoost =
+      (finalLabel === "fake" && fakeProbability >= 65) ||
+      (finalLabel === "real" && trustScore >= 65) ||
+      (finalLabel === "misleading" && fakeProbability >= 45 && fakeProbability < 70)
         ? 5
         : 0;
 
-    const finalConfidence = Math.min(99, Math.round(aiConfidence + alignmentBoost));
+    const finalConfidence = Math.min(99, Math.round(aiConfidence + confidenceAlignmentBoost));
+
+    const riskBand = fakeProbability >= 70 ? "high" : fakeProbability >= 45 ? "medium" : "low";
 
     return new Response(
       JSON.stringify({
         label: finalLabel,
         confidence: finalConfidence,
-        explanation: aiParsed.explanation ?? "Hybrid classification completed from language + metadata features.",
-        modelName: "hybrid/gemini-3-flash-preview+metadata-v1",
+        explanation:
+          aiParsed.explanation ??
+          "Hybrid classification completed from semantic analysis and metadata trust indicators.",
+        modelName: "hybrid/gemini-3-flash-preview+metadata-v2",
         metadata: {
           ...metadata.features,
+          indicators: metadata.indicators,
           metadataRiskScore: metadata.score,
           aiLabel,
           aiConfidence,
+          fakeProbability,
+          trustScore,
+          riskBand,
         },
       }),
       {
