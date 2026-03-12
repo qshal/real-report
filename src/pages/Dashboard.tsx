@@ -19,7 +19,7 @@ const profileSchema = z.object({
   username: z
     .string()
     .trim()
-    .regex(/^[a-zA-Z0-9_]{3,20}$/g, "Username must be 3-20 chars: letters, numbers, underscore."),
+    .regex(/^[a-zA-Z0-9_]{3,20}$/, "Username must be 3-20 chars: letters, numbers, underscore."),
 });
 
 type NewsCheck = Tables<"news_checks">;
