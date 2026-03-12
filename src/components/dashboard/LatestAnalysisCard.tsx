@@ -1,10 +1,14 @@
-import { BarChart3, FileCheck2, ShieldAlert, Newspaper, ExternalLink, Brain, Globe, Info } from "lucide-react";
+import { useState } from "react";
+import { BarChart3, FileCheck2, ShieldAlert, Newspaper, ExternalLink, Brain, Globe, Info, Database } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 import type { Json } from "@/integrations/supabase/types";
 import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
+import { storeAnalysisOnChain, generateContentHash } from "@/lib/blockchain";
 
 type Row = {
   predicted_label: string;
@@ -52,6 +56,9 @@ interface ComponentScores {
 }
 
 export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
+  const [storing, setStoring] = useState(false);
+  const [stored, setStored] = useState(false);
+
   if (!item) {
     return (
       <Card className="glass-panel">
@@ -78,6 +85,36 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
                          (contradictingArticles && contradictingArticles.length > 0) ||
                          (newsVerification && newsVerification.trustedSourcesFound > 0);
 
+  // Handle blockchain storage
+  const handleStoreOnBlockchain = async () => {
+    const content = item.input_text || item.source_url || "";
+    if (!content) {
+      toast.error("No content to store on blockchain");
+      return;
+    }
+
+    setStoring(true);
+    try {
+      const result = await storeAnalysisOnChain(
+        content,
+        item.predicted_label,
+        item.confidence
+      );
+
+      if (result.success && result.txHash) {
+        toast.success("Analysis stored on blockchain!");
+        toast.info(`Transaction: ${result.txHash.slice(0, 20)}...`);
+        setStored(true);
+      } else {
+        toast.error(result.error || "Failed to store on blockchain");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Blockchain storage failed");
+    } finally {
+      setStoring(false);
+    }
+  };
+
   return (
     <TooltipProvider>
       <Card className="glass-panel">
@@ -96,6 +133,23 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
             {hasNewsResults ? (
               <p className="inline-flex items-center gap-1"><Newspaper className="h-4 w-4 text-brand" /> News sources: <span className="font-semibold">{newsVerification.trustedSourcesFound}</span></p>
             ) : null}
+          </div>
+
+          {/* Blockchain Storage Button */}
+          <div className="pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={handleStoreOnBlockchain}
+              disabled={storing || stored}
+            >
+              <Database className="h-4 w-4 mr-2" />
+              {storing ? "Storing..." : stored ? "Stored on Blockchain ✓" : "Store on Blockchain"}
+            </Button>
+            <p className="text-xs text-muted-foreground mt-1 text-center">
+              Store analysis hash on Ethereum for immutable verification
+            </p>
           </div>
 
           {/* Component Scores Breakdown - For Reference Only */}
