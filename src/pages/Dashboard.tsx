@@ -91,19 +91,20 @@ const Dashboard = () => {
       return;
     }
 
-    const rawInput = parsed.data.inputType === "text" ? parsed.data.text : parsed.data.url;
+    const parsedPayload = parsed.data as { inputType: "text"; text: string } | { inputType: "url"; url: string };
+    const rawInput = parsedPayload.inputType === "text" ? parsedPayload.text : parsedPayload.url;
     const baselinePrediction = predictFakeNews(rawInput);
 
     setSubmitting(true);
 
     try {
-      const hybridPrediction = await analyzeNewsHybrid(parsed.data);
+      const hybridPrediction = await analyzeNewsHybrid(parsedPayload);
 
       const saved = (await createNewsCheck({
         user_id: user.id,
-        input_type: parsed.data.inputType,
-        input_text: parsed.data.inputType === "text" ? parsed.data.text : null,
-        source_url: parsed.data.inputType === "url" ? parsed.data.url : null,
+        input_type: parsedPayload.inputType,
+        input_text: parsedPayload.inputType === "text" ? parsedPayload.text : null,
+        source_url: parsedPayload.inputType === "url" ? parsedPayload.url : null,
         predicted_label: hybridPrediction.label,
         confidence: hybridPrediction.confidence,
         explanation: hybridPrediction.explanation,
