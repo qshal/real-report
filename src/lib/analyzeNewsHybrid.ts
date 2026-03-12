@@ -33,10 +33,108 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Pr
   ]).catch(() => fallback);
 };
 
+/**
+ * Fetch and extract content from a URL
+ * Uses a CORS proxy to bypass restrictions
+ */
+async function fetchUrlContent(url: string): Promise<{ title: string; content: string; error?: string }> {
+  try {
+    // Try multiple CORS proxies
+    const corsProxies = [
+      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+    ];
+    
+    let response = null;
+    let lastError = null;
+    
+    for (const proxyUrl of corsProxies) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        response = await fetch(proxyUrl, {
+          signal: controller.signal,
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) break;
+      } catch (err) {
+        lastError = err;
+        continue;
+      }
+    }
+    
+    if (!response || !response.ok) {
+      return { 
+        title: "", 
+        content: "", 
+        error: `Failed to fetch URL: ${lastError || 'Unknown error'}` 
+      };
+    }
+    
+    const html = await response.text();
+    
+    // Extract title
+    const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+    const title = titleMatch ? titleMatch[1].trim() : "";
+    
+    // Extract meta description
+    const metaDescMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i) ||
+                          html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i);
+    const metaDescription = metaDescMatch ? metaDescMatch[1].trim() : "";
+    
+    // Extract article content (basic extraction)
+    // Remove scripts, styles, and tags
+    let content = html
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    // Get first 3000 characters of content
+    content = content.slice(0, 3000);
+    
+    return { 
+      title, 
+      content: metaDescription || content,
+    };
+  } catch (error) {
+    return { 
+      title: "", 
+      content: "", 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
+}
+
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
-  const content = payload.inputType === "text" ? payload.text : payload.url;
   const isUrl = payload.inputType === "url";
-  const claim = extractClaim(content);
+  
+  // Fetch URL content if it's a URL
+  let urlContent: { title: string; content: string; error?: string } | null = null;
+  let contentToAnalyze: string;
+  
+  if (isUrl) {
+    const url = payload.url;
+    urlContent = await fetchUrlContent(url);
+    
+    if (urlContent.error || !urlContent.content) {
+      // Fallback: analyze just the URL if we can't fetch content
+      contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title || 'Unknown'}\nCould not fetch full content.`;
+    } else {
+      contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title}\nContent: ${urlContent.content}`;
+    }
+  } else {
+    contentToAnalyze = payload.text;
+  }
+  
+  const claim = extractClaim(contentToAnalyze);
 
   // Pollinations AI doesn't need API key
   const apiKey = getGeminiApiKey();
@@ -45,7 +143,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   const [aiResult, newsResult] = await Promise.all([
     // AI analysis is critical - 15 second timeout
     withTimeout(
-      analyzeWithAI(content, apiKey),
+      analyzeWithAI(contentToAnalyze, apiKey),
       15000,
       null
     ),
@@ -74,7 +172,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     };
   }
 
-  const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(content) : null;
+  const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(payload.url) : null;
   
   // AI-ONLY VERDICT: Use only AI for the final label and confidence
   // News and Source are shown for transparency but don't affect the verdict
@@ -143,6 +241,13 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       isFactual: aiResult.isFactual,
       keyClaims: aiResult.keyClaims,
       potentialIssues: aiResult.potentialIssues,
+      // URL content (if applicable)
+      urlContent: isUrl ? {
+        url: payload.url,
+        title: urlContent?.title || null,
+        content: urlContent?.content?.slice(0, 500) || null, // First 500 chars
+        fetchError: urlContent?.error || null,
+      } : null,
       // Supplementary info (shown for transparency, not used in verdict)
       sourceDomain: sourceCredibilityResult?.domain || null,
       sourceCredibility: sourceCredibilityResult?.credibilityScore || null,
