@@ -41,19 +41,28 @@ async function fetchUrlContent(url: string): Promise<{ title: string; content: s
   try {
     // Try multiple CORS proxies
     const corsProxies = [
-      `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
-      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      { 
+        url: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        extract: async (res: Response) => {
+          const data = await res.json();
+          return data.contents || '';
+        }
+      },
+      { 
+        url: `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        extract: async (res: Response) => res.text()
+      },
     ];
     
-    let response = null;
-    let lastError = null;
+    let html = '';
+    let title = '';
     
-    for (const proxyUrl of corsProxies) {
+    for (const proxy of corsProxies) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         
-        response = await fetch(proxyUrl, {
+        const response = await fetch(proxy.url, {
           signal: controller.signal,
           headers: {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -62,49 +71,75 @@ async function fetchUrlContent(url: string): Promise<{ title: string; content: s
         
         clearTimeout(timeoutId);
         
-        if (response.ok) break;
+        if (response.ok) {
+          html = await proxy.extract(response);
+          break;
+        }
       } catch (err) {
-        lastError = err;
+        console.warn(`Proxy failed: ${proxy.url}`, err);
         continue;
       }
     }
     
-    if (!response || !response.ok) {
+    if (!html) {
       return { 
         title: "", 
         content: "", 
-        error: `Failed to fetch URL: ${lastError || 'Unknown error'}` 
+        error: 'Failed to fetch URL content from all proxies' 
       };
     }
     
-    const html = await response.text();
-    
     // Extract title
     const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : "";
+    title = titleMatch ? titleMatch[1].trim() : "";
     
     // Extract meta description
     const metaDescMatch = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i) ||
                           html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']*)["']/i);
     const metaDescription = metaDescMatch ? metaDescMatch[1].trim() : "";
     
-    // Extract article content (basic extraction)
-    // Remove scripts, styles, and tags
-    let content = html
+    // Extract article content - look for common article containers first
+    let articleContent = '';
+    
+    // Try to find article content in common containers
+    const articleMatch = html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
+                        html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
+                        html.match(/<div[^>]*class=["'][^"']*content[^"']*["'][^>]*>([\s\S]*?)<\/div>/i) ||
+                        html.match(/<div[^>]*class=["'][^"']*article[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+    
+    if (articleMatch) {
+      articleContent = articleMatch[1];
+    } else {
+      // Fallback: use body content
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      articleContent = bodyMatch ? bodyMatch[1] : html;
+    }
+    
+    // Clean the content
+    let content = articleContent
       .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, ' ')
+      .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, ' ')
+      .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
       .replace(/\s+/g, ' ')
       .trim();
     
-    // Get first 3000 characters of content
-    content = content.slice(0, 3000);
+    // Get first 4000 characters of content
+    content = content.slice(0, 4000);
+    
+    // If we have very little content, use meta description
+    if (content.length < 100 && metaDescription) {
+      content = metaDescription;
+    }
     
     return { 
       title, 
-      content: metaDescription || content,
+      content: content || metaDescription || 'No content extracted',
     };
   } catch (error) {
+    console.error('URL fetch error:', error);
     return { 
       title: "", 
       content: "", 
@@ -124,11 +159,11 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     const url = payload.url;
     urlContent = await fetchUrlContent(url);
     
-    if (urlContent.error || !urlContent.content) {
+    if (urlContent.error || !urlContent.content || urlContent.content === 'No content extracted') {
       // Fallback: analyze just the URL if we can't fetch content
-      contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title || 'Unknown'}\nCould not fetch full content.`;
+      contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title || 'Unknown'}\nNote: Could not fetch article content. Analyzing based on URL and title only.`;
     } else {
-      contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title}\nContent: ${urlContent.content}`;
+      contentToAnalyze = `ARTICLE FROM URL: ${url}\n\nTITLE: ${urlContent.title || 'No title'}\n\nARTICLE CONTENT:\n${urlContent.content}\n\nAnalyze the above article content for factual accuracy.`;
     }
   } else {
     contentToAnalyze = payload.text;
