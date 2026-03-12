@@ -70,30 +70,17 @@ const SUSPICIOUS_INDICATORS = [
   "clickhole", "theonion", "satire"
 ];
 
-// Mock data for fallback when API is unavailable
-const MOCK_ARTICLES: NewsArticle[] = [
-  {
-    title: "Sample trusted news article",
-    url: "https://example.com/article",
-    source: "Trusted Source",
-    publishedAt: new Date().toISOString(),
-    snippet: "This is sample data when NewsAPI is unavailable.",
-    relevanceScore: 80,
-    isTrusted: true
-  }
-];
-
 /**
  * Get fallback result when NewsAPI is unavailable
  */
-function getFallbackResult(claim: string): RetrievalResult {
+function getFallbackResult(claim: string, reason: string): RetrievalResult {
   return {
     claim,
     trustedSourcesFound: 0,
-    supportingArticles: MOCK_ARTICLES,
+    supportingArticles: [],
     contradictingArticles: [],
     fakeProbability: 50,
-    reasoning: "NewsAPI temporarily unavailable. Using fallback mode.",
+    reasoning: reason,
   };
 }
 
@@ -210,7 +197,7 @@ export async function searchTrustedNews(
     if (!response.ok) {
       if (response.status === 429) {
         console.warn("NewsAPI rate limited, using fallback");
-        return getFallbackResult(claim);
+        return getFallbackResult(claim, "NewsAPI rate limited. Please try again later.");
       }
       throw new Error(`NewsAPI error: ${response.status}`);
     }
@@ -221,7 +208,7 @@ export async function searchTrustedNews(
     // Check if API returned error (e.g., developer plan limitation)
     if (data.status === "error") {
       console.warn("NewsAPI error:", data.message);
-      return getFallbackResult(claim);
+      return getFallbackResult(claim, `NewsAPI error: ${data.message || "Unknown error"}`);
     }
     
     const articles: NewsArticle[] = (data.articles || [])
@@ -296,7 +283,7 @@ export async function searchTrustedNews(
     return result;
   } catch (error) {
     console.error("Retrieval verification error:", error);
-    return getFallbackResult(claim);
+    return getFallbackResult(claim, `Error: ${error instanceof Error ? error.message : "Unknown error"}`);
   }
 }
 

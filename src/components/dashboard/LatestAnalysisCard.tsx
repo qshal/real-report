@@ -35,6 +35,7 @@ interface NewsVerification {
   supportingArticles: number;
   contradictingArticles: number;
   fakeProbability: number;
+  reasoning?: string;
 }
 
 export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
@@ -90,6 +91,15 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
               <h4 className="text-sm font-semibold flex items-center gap-2">
                 <Newspaper className="h-4 w-4" /> Related News Articles
               </h4>
+              
+              {/* Show reasoning if no articles found */}
+              {(!supportingArticles || supportingArticles.length === 0) && 
+               (!contradictingArticles || contradictingArticles.length === 0) &&
+               newsVerification?.reasoning && (
+                <p className="text-xs text-muted-foreground italic">
+                  {newsVerification.reasoning}
+                </p>
+              )}
               
               {supportingArticles && supportingArticles.length > 0 && (
                 <div className="space-y-1">
