@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { Link, Navigate } from "react-router-dom";
 import { z } from "zod";
 import { Loader2, LogIn, UserPlus } from "lucide-react";
