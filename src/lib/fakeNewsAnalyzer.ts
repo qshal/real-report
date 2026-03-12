@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { predictFakeNews as trainedModelPredict } from "./modelLoader";
 
 export const analysisSchema = z.discriminatedUnion("inputType", [
   z.object({
@@ -19,10 +20,11 @@ export type PredictionResult = {
   explanation: string;
 };
 
+// Fallback rule-based prediction for when ML model isn't available
 const fakeSignals = ["shocking", "they don't want you to know", "miracle cure", "100% proven", "secret", "hoax"];
 const misleadingSignals = ["sources say", "viral", "breaking", "unverified", "rumor", "maybe"];
 
-export const predictFakeNews = (rawInput: string): PredictionResult => {
+const ruleBasedPredict = (rawInput: string): PredictionResult => {
   const input = rawInput.toLowerCase();
 
   const fakeHits = fakeSignals.filter((signal) => input.includes(signal)).length;
@@ -52,4 +54,15 @@ export const predictFakeNews = (rawInput: string): PredictionResult => {
     confidence: Math.max(72, 88 - riskScore / 3),
     explanation: "No major manipulation markers were detected in the submitted content.",
   };
+};
+
+// Use trained ML model with fallback to rule-based
+export const predictFakeNews = (rawInput: string): PredictionResult => {
+  try {
+    // Try the trained model first
+    return trainedModelPredict(rawInput);
+  } catch {
+    // Fallback to rule-based if ML model fails
+    return ruleBasedPredict(rawInput);
+  }
 };
