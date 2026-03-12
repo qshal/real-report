@@ -23,6 +23,16 @@ export type HybridAnalysisResult = {
 
 const clampConfidence = (value: number) => Math.max(1, Math.min(99, Math.round(value)));
 
+// Timeout wrapper for promises
+const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout')), timeoutMs)
+    )
+  ]).catch(() => fallback);
+};
+
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   const isUrl = payload.inputType === "url";
@@ -31,10 +41,27 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   // Pollinations AI doesn't need API key
   const apiKey = getGeminiApiKey();
 
-  // Run AI analysis and NewsAPI search in parallel
+  // Run AI analysis (primary) and NewsAPI search (secondary) in parallel with timeouts
   const [aiResult, newsResult] = await Promise.all([
-    analyzeWithAI(content, apiKey),
-    searchTrustedNews(claim, getNewsApiKey())
+    // AI analysis is critical - 15 second timeout
+    withTimeout(
+      analyzeWithAI(content, apiKey),
+      15000,
+      null
+    ),
+    // NewsAPI is supplementary - 5 second timeout, fallback to empty result
+    withTimeout(
+      searchTrustedNews(claim, getNewsApiKey()),
+      5000,
+      {
+        claim,
+        trustedSourcesFound: 0,
+        supportingArticles: [],
+        contradictingArticles: [],
+        fakeProbability: 50,
+        reasoning: "NewsAPI timeout - using AI-only analysis",
+      }
+    )
   ]);
 
   if (!aiResult || aiResult.confidence === 0) {

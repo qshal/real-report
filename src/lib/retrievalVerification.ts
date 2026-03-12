@@ -26,7 +26,7 @@ export interface NewsArticle {
 }
 
 // Cache configuration
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 const newsCache = new Map<string, { data: RetrievalResult; timestamp: number }>();
 
 // Trusted news domains (22 sources)

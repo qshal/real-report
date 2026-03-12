@@ -39,12 +39,19 @@ Respond ONLY in this exact JSON format:
 Be critical and skeptical. Common knowledge and opinions are fine, but specific facts, statistics, and scientific claims should be flagged if they seem questionable.`;
 
   try {
+    // Use AbortController for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 second timeout
+    
     const response = await fetch(`${POLLINATIONS_API_URL}/${encodeURIComponent(prompt)}?model=openai&seed=42&json=true`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
+      signal: controller.signal,
     });
+    
+    clearTimeout(timeoutId);
 
     if (!response.ok) {
       const errorText = await response.text();
