@@ -5,6 +5,7 @@ import {
   Brain,
   Chrome,
   CircleCheckBig,
+  Download,
   LayoutDashboard,
   Megaphone,
   Newspaper,
@@ -28,6 +29,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Button } from "@/components/ui/button";
+import { exportFakeNewsDeckPpt } from "@/lib/exportDeckPpt";
 
 const modelScores = [
   { model: "LR", f1: 0.84 },
@@ -51,9 +54,14 @@ const Index = () => {
         <section className="hero-panel relative overflow-hidden rounded-3xl p-6 text-primary-foreground md:p-10">
           <div className="signature-orb" aria-hidden="true" />
           <div className="relative z-10 space-y-5">
-            <p className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 px-4 py-1.5 text-sm font-semibold">
-              <Newspaper className="h-4 w-4" /> Fake News Detection Using AI
-            </p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <p className="inline-flex items-center gap-2 rounded-full border border-primary-foreground/25 px-4 py-1.5 text-sm font-semibold">
+                <Newspaper className="h-4 w-4" /> Fake News Detection Using AI
+              </p>
+              <Button variant="secondary" onClick={exportFakeNewsDeckPpt} className="shrink-0">
+                <Download className="h-4 w-4" /> Export PPT
+              </Button>
+            </div>
             <h1 className="max-w-4xl text-4xl font-bold leading-tight md:text-5xl">
               Professional AI/Media Deck Theme with Icon System and Metrics Visuals
             </h1>
@@ -229,4 +237,5 @@ const Index = () => {
 };
 
 export default Index;
+
 
