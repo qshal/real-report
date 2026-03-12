@@ -1,8 +1,8 @@
 /**
- * AI-Powered Fact Checking using Hugging Face Inference API (Free Tier)
+ * AI-Powered Fact Checking using OpenRouter API
  * 
- * Hugging Face provides free inference for open-source models
- * Get free API key from: https://huggingface.co/settings/tokens
+ * OpenRouter provides access to various LLMs
+ * Get API key from: https://openrouter.ai/keys
  */
 
 export interface AIFactCheckResult {
@@ -13,26 +13,23 @@ export interface AIFactCheckResult {
   potentialIssues: string[];
 }
 
-// Using Hugging Face Inference API
-const HF_API_URL = "https://api-inference.huggingface.co/models/mistralai/Mistral-7B-Instruct-v0.2";
+// Using OpenRouter API
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
- * Analyze text using Hugging Face AI for factual accuracy
+ * Analyze text using OpenRouter AI for factual accuracy
  */
 export async function analyzeWithAI(
   text: string,
   apiKey?: string
 ): Promise<AIFactCheckResult | null> {
   if (!apiKey) {
-    console.warn("No Hugging Face API key provided");
+    console.warn("No OpenRouter API key provided");
     return null;
   }
 
-  const prompt = `<s>[INST] You are a fact-checking AI. Analyze the following text for factual accuracy.
-
-Text to analyze: """${text.slice(0, 2000)}"""
-
-Respond in this exact JSON format:
+  const systemPrompt = `You are a fact-checking AI. Analyze text for factual accuracy.
+Respond ONLY in this exact JSON format:
 {
   "isFactual": boolean (true if mostly factual, false if contains false/misleading claims),
   "confidence": number (0-100, how confident you are in this assessment),
@@ -41,28 +38,33 @@ Respond in this exact JSON format:
   "potentialIssues": string[] (list of any false, misleading, or unverifiable statements)
 }
 
-Be critical and skeptical. Common knowledge and opinions are fine, but specific facts, statistics, and scientific claims should be flagged if they seem questionable. [/INST]`;
+Be critical and skeptical. Common knowledge and opinions are fine, but specific facts, statistics, and scientific claims should be flagged if they seem questionable.`;
+
+  const userPrompt = `Text to analyze: """${text.slice(0, 2000)}"""`;
 
   try {
-    const response = await fetch(HF_API_URL, {
+    const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${apiKey}`,
+        "HTTP-Referer": "https://real-report.vercel.app",
+        "X-Title": "Real Report Fact Checker",
       },
       body: JSON.stringify({
-        inputs: prompt,
-        parameters: {
-          max_new_tokens: 800,
-          temperature: 0.1,
-          return_full_text: false,
-        },
+        model: "mistralai/mistral-7b-instruct:free",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.1,
+        max_tokens: 800,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Hugging Face API error:", response.status, errorText);
+      console.error("OpenRouter API error:", response.status, errorText);
       
       // Return error info for debugging
       return {
@@ -75,17 +77,17 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
     }
 
     const data = await response.json();
-    const generatedText = Array.isArray(data) ? data[0]?.generated_text : data.generated_text;
+    const generatedText = data.choices?.[0]?.message?.content;
 
     if (!generatedText) {
-      console.error("No response from Hugging Face");
+      console.error("No response from OpenRouter");
       return null;
     }
 
     // Extract JSON from the response
     const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("Could not parse Hugging Face response:", generatedText);
+      console.error("Could not parse OpenRouter response:", generatedText);
       return null;
     }
 
@@ -98,10 +100,10 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
 }
 
 /**
- * Get Hugging Face API key from environment
+ * Get OpenRouter API key from environment
  */
 export function getGeminiApiKey(): string | undefined {
-  return import.meta.env.VITE_HF_API_KEY;
+  return import.meta.env.VITE_OPENROUTER_API_KEY;
 }
 
 /**
