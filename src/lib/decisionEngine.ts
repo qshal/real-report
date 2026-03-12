@@ -19,6 +19,7 @@ export interface FactCheckResult {
   isReliable?: boolean;
   rating?: string;
   publisher?: string;
+  url?: string;
 }
 
 export interface RetrievalResult {
@@ -253,14 +254,14 @@ export function makeFinalDecision(input: DecisionInput): FinalVerdict {
   const credibilityScore = calculateCredibilityScore(input.sourceCredibility);
   const aiScore = calculateAIReasoningScore(input.aiReasoning);
   
-  // Weighted combination
-  // Weights: Fact Check 35%, Retrieval 30%, Credibility 20%, AI 15%
-  // Heuristic is incorporated into AI and other components
+  // Weighted combination - Prioritizing AI and Source Credibility
+  // Weights: AI Reasoning 40%, Source Credibility 35%, Fact Check 15%, Retrieval 10%
+  // Heuristic signals minimized (incorporated into AI reasoning)
   const fakeScore = 
-    0.35 * factCheckScore +
-    0.30 * retrievalScore +
-    0.20 * credibilityScore +
-    0.15 * aiScore;
+    0.40 * aiScore +
+    0.35 * credibilityScore +
+    0.15 * factCheckScore +
+    0.10 * retrievalScore;
   
   // Determine label
   let label: PredictionLabel;
