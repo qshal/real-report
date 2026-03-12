@@ -1,8 +1,9 @@
 import { predictFakeNews } from "@/lib/modelLoader";
 import { analyzeWithFactCheck, getFactCheckApiKey } from "@/lib/factCheckApi";
-import { analyzeWithAI, getGeminiApiKey, aiResultToLabel } from "@/lib/aiFactChecker";
+import { analyzeWithAI, getGeminiApiKey } from "@/lib/aiFactChecker";
 import { extractClaim, searchTrustedNews, getNewsApiKey } from "@/lib/retrievalVerification";
-import { analyzeSourceCredibility, adjustProbabilityBySource } from "@/lib/sourceCredibility";
+import { analyzeSourceCredibility } from "@/lib/sourceCredibility";
+import { makeFinalDecision, type DecisionInput } from "@/lib/decisionEngine";
 import type { PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 
 export type AnalyzeNewsPayload =
@@ -47,7 +48,7 @@ const metadataRiskScore = (text: string) => {
   };
 };
 
-// Multi-layer analysis: Retrieval → AI → Fact Check → ML Fallback
+// Unified analysis using Decision Engine with weighted scoring
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   const isUrl = payload.inputType === "url";
@@ -55,155 +56,82 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   // Extract main claim
   const claim = extractClaim(content);
   
-  // Step 1: Source Credibility Analysis (for URLs)
-  let sourceCredibility = null;
-  let sourceAdjustedProbability = 50;
-  if (isUrl) {
-    sourceCredibility = analyzeSourceCredibility(content);
-    const adjustment = adjustProbabilityBySource(50, sourceCredibility);
-    sourceAdjustedProbability = adjustment.adjustedProbability;
-  }
+  // Get metadata/heuristic signals
+  const metadata = metadataRiskScore(content);
   
-  // Step 2: Retrieval-based Verification (search trusted news)
+  // Step 1: Source Credibility Analysis (for URLs)
+  const sourceCredibilityResult = isUrl 
+    ? analyzeSourceCredibility(content)
+    : { credibilityScore: 0.5, reputation: "unknown" as const, domain: "", category: "", explanation: "" };
+  
+  // Step 2: Retrieval-based Verification
   const newsApiKey = getNewsApiKey();
   const retrievalResult = await searchTrustedNews(claim, newsApiKey);
-  
-  // If strong consensus from trusted sources
-  if (retrievalResult.trustedSourcesFound >= 3 && retrievalResult.fakeProbability < 30) {
-    return {
-      label: "real",
-      confidence: Math.round(100 - retrievalResult.fakeProbability),
-      explanation: `${retrievalResult.reasoning} Found ${retrievalResult.trustedSourcesFound} trusted sources corroborating this claim.`,
-      modelName: "retrieval-verification",
-      metadata: {
-        claim,
-        trustedSourcesFound: retrievalResult.trustedSourcesFound,
-        supportingArticles: retrievalResult.supportingArticles.slice(0, 3),
-        sourceCredibility,
-        verificationMethod: "news-retrieval",
-      },
-    };
-  }
   
   // Step 3: Google Fact Check API
   const factCheckApiKey = getFactCheckApiKey();
   const factCheckResult = await analyzeWithFactCheck(content, factCheckApiKey);
   
-  if (factCheckResult.hasFactCheck && factCheckResult.isReliable !== undefined) {
-    const label: PredictionLabel = factCheckResult.isReliable ? "real" : "fake";
-    const confidence = 90;
-    
-    return {
-      label,
-      confidence,
-      explanation: `Fact-checked by ${factCheckResult.publisher}: "${factCheckResult.rating}".`,
-      modelName: "fact-check-api",
-      metadata: {
-        claim,
-        factCheckSource: factCheckResult.publisher,
-        factCheckUrl: factCheckResult.url,
-        factCheckRating: factCheckResult.rating,
-        sourceCredibility,
-        verified: true,
-      },
-    };
-  }
-  
   // Step 4: AI Analysis (Gemini)
   const geminiKey = getGeminiApiKey();
   const aiResult = await analyzeWithAI(content, geminiKey);
   
-  if (aiResult) {
-    const aiLabel = aiResultToLabel(aiResult);
-    
-    // Combine AI with retrieval results
-    let finalLabel = aiLabel.label;
-    let finalConfidence = aiLabel.confidence;
-    
-    // If retrieval found no sources and AI says fake, increase confidence
-    if (retrievalResult.trustedSourcesFound === 0 && aiLabel.label === "fake") {
-      finalConfidence = Math.min(95, finalConfidence + 15);
-    }
-    
-    // If retrieval found supporting sources and AI says real, increase confidence
-    if (retrievalResult.trustedSourcesFound >= 2 && aiLabel.label === "real") {
-      finalConfidence = Math.min(95, finalConfidence + 10);
-    }
-    
-    return {
-      label: finalLabel,
-      confidence: finalConfidence,
-      explanation: aiLabel.explanation,
-      modelName: "gemini-ai-v1.5",
-      metadata: {
-        claim,
-        aiAnalyzed: true,
-        keyClaims: aiResult.keyClaims,
-        potentialIssues: aiResult.potentialIssues,
-        trustedSourcesFound: retrievalResult.trustedSourcesFound,
-        sourceCredibility,
-        verificationMethod: "ai-analysis",
-      },
-    };
-  }
+  // Build decision input
+  const decisionInput: DecisionInput = {
+    heuristicSignals: {
+      fakeSignalCount: metadata.indicators.filter(i => i.includes("sensational")).length,
+      misleadingSignalCount: metadata.indicators.filter(i => i.includes("speculative")).length,
+      sensationalLanguageScore: metadata.score / 100,
+      punctuationScore: metadata.indicators.filter(i => i.includes("punctuation")).length,
+      capsRatio: 0, // Would need to calculate from original text
+    },
+    factCheckResult: {
+      found: factCheckResult.hasFactCheck,
+      isReliable: factCheckResult.isReliable,
+      rating: factCheckResult.rating,
+      publisher: factCheckResult.publisher,
+    },
+    retrievalResult: {
+      trustedSourcesFound: retrievalResult.trustedSourcesFound,
+      fakeProbability: retrievalResult.fakeProbability,
+      hasConsensus: retrievalResult.trustedSourcesFound >= 3,
+    },
+    sourceCredibility: {
+      score: sourceCredibilityResult.credibilityScore,
+      reputation: sourceCredibilityResult.reputation,
+    },
+    aiReasoning: aiResult ? {
+      isFactual: aiResult.isFactual,
+      confidence: aiResult.confidence,
+      keyIssues: aiResult.potentialIssues,
+    } : {
+      isFactual: true,
+      confidence: 50,
+      keyIssues: [],
+    },
+  };
   
-  // Step 5: Combined Retrieval + Source Credibility
-  if (retrievalResult.trustedSourcesFound > 0 || sourceCredibility) {
-    const baseProbability = retrievalResult.fakeProbability;
-    let finalProbability = baseProbability;
-    
-    // Adjust for source credibility
-    if (sourceCredibility) {
-      const adjustment = adjustProbabilityBySource(baseProbability, sourceCredibility);
-      finalProbability = adjustment.adjustedProbability;
-    }
-    
-    const label: PredictionLabel = finalProbability >= 60 ? "fake" : finalProbability >= 40 ? "misleading" : "real";
-    const confidence = Math.round(Math.abs(50 - finalProbability) * 2);
-    
-    return {
-      label,
-      confidence,
-      explanation: retrievalResult.reasoning + (sourceCredibility ? ` Source: ${sourceCredibility.explanation}` : ""),
-      modelName: "retrieval+credibility",
-      metadata: {
-        claim,
-        trustedSourcesFound: retrievalResult.trustedSourcesFound,
-        supportingArticles: retrievalResult.supportingArticles.slice(0, 3),
-        sourceCredibility,
-        fakeProbability: finalProbability,
-      },
-    };
-  }
-  
-  // Step 6: ML Model Fallback
-  const prediction = predictFakeNews(content);
-  
-  // Get metadata risk score
-  const metadata = metadataRiskScore(content);
-  
-  // Calculate fake probability based on prediction
-  const fakeProbability = prediction.label === "fake" 
-    ? prediction.confidence 
-    : prediction.label === "misleading" 
-      ? 50 
-      : 100 - prediction.confidence;
-  
-  const trustScore = Math.max(1, Math.min(99, 100 - fakeProbability));
-  const riskBand = fakeProbability >= 70 ? "high" : fakeProbability >= 45 ? "medium" : "low";
+  // Make final decision using weighted engine
+  const verdict = makeFinalDecision(decisionInput);
   
   return {
-    label: prediction.label,
-    confidence: prediction.confidence,
-    explanation: prediction.explanation,
-    modelName: "trained-ml-model-v1",
+    label: verdict.label,
+    confidence: verdict.confidence,
+    explanation: verdict.explanation,
+    modelName: "decision-engine-v1",
     metadata: {
-      metadataRiskScore: metadata.score,
-      indicators: metadata.indicators,
-      fakeProbability,
-      trustScore,
-      riskBand,
-      factChecked: false,
+      claim,
+      fakeScore: verdict.fakeScore,
+      componentBreakdown: verdict.componentBreakdown,
+      recommendations: verdict.recommendations,
+      trustedSourcesFound: retrievalResult.trustedSourcesFound,
+      supportingArticles: retrievalResult.supportingArticles.slice(0, 3),
+      factCheckFound: factCheckResult.hasFactCheck,
+      factCheckRating: factCheckResult.rating,
+      sourceCredibility: sourceCredibilityResult,
+      aiAnalyzed: !!aiResult,
+      keyClaims: aiResult?.keyClaims,
+      potentialIssues: aiResult?.potentialIssues,
     },
   };
 };
