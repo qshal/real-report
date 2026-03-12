@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-type PredictionLabel = "real" | "fake" | "misleading";
+type PredictionLabel = "real" | "fake";
 
 type AnalyzeRequest =
   | {
@@ -90,7 +90,7 @@ const metadataRiskScore = (payload: AnalyzeRequest) => {
 };
 
 const normalizeLabel = (value: string | undefined): PredictionLabel => {
-  if (value === "fake" || value === "misleading") return value;
+  if (value === "fake") return value;
   return "real";
 };
 
@@ -153,7 +153,7 @@ serve(async (req) => {
           {
             role: "system",
             content:
-              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake|misleading. Consider semantics, writing style, internal consistency, and metadata indicators.",
+              "You are an analyst for misinformation detection. Return ONLY compact JSON with keys label, confidence, explanation. label must be one of real|fake. Consider semantics, writing style, internal consistency, and metadata indicators.",
           },
           {
             role: "user",
@@ -209,19 +209,16 @@ serve(async (req) => {
     const aiConfidence = Math.max(51, Math.min(99, Number(aiParsed.confidence ?? 70)));
 
     let finalLabel: PredictionLabel = aiLabel;
-    if (metadata.score >= 75 && aiLabel === "misleading") finalLabel = "fake";
-    if (metadata.score <= 20 && aiLabel === "fake" && aiConfidence < 75) finalLabel = "misleading";
 
-    const labelBias = finalLabel === "fake" ? 14 : finalLabel === "misleading" ? 6 : -8;
+    if (metadata.score >= 82) finalLabel = "fake";
+    if (metadata.score <= 12) finalLabel = "real";
+
+    const labelBias = finalLabel === "fake" ? 12 : -10;
     const fakeProbability = Math.max(1, Math.min(99, Math.round(metadata.score * 0.55 + aiConfidence * 0.45 + labelBias)));
     const trustScore = Math.max(1, Math.min(99, Math.round(100 - fakeProbability + (metadata.features.trustedBonus > 0 ? 8 : 0))));
 
     const confidenceAlignmentBoost =
-      (finalLabel === "fake" && fakeProbability >= 65) ||
-      (finalLabel === "real" && trustScore >= 65) ||
-      (finalLabel === "misleading" && fakeProbability >= 45 && fakeProbability < 70)
-        ? 5
-        : 0;
+      (finalLabel === "fake" && fakeProbability >= 65) || (finalLabel === "real" && trustScore >= 65) ? 5 : 0;
 
     const finalConfidence = Math.min(99, Math.round(aiConfidence + confidenceAlignmentBoost));
 
