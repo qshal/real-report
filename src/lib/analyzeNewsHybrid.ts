@@ -36,7 +36,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload) => {
     label: result.label,
     confidence: result.confidence,
     explanation: result.explanation ?? "Hybrid model completed analysis.",
-    modelName: result.modelName ?? "hybrid/gemini-3-flash-preview+metadata-v1",
+    modelName: result.modelName ?? "hybrid/gemini-3-flash-preview+metadata-v2",
     metadata: result.metadata ?? {},
   } as HybridAnalysisResult;
 };
