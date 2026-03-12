@@ -113,7 +113,7 @@ const Dashboard = () => {
         baseline_confidence: baselinePrediction.confidence,
         baseline_explanation: baselinePrediction.explanation,
         analysis_metadata: hybridPrediction.metadata,
-      } as never)) as NewsCheck;
+      })) as NewsCheck;
 
       setHistory((prev) => [saved, ...prev]);
       toast.success("Hybrid analysis saved to your dashboard.");
