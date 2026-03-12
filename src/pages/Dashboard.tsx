@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
