@@ -108,7 +108,10 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
         supportingArticles: newsResult.supportingArticles.length,
         contradictingArticles: newsResult.contradictingArticles.length,
         fakeProbability: newsResult.fakeProbability,
+        reasoning: newsResult.reasoning,
       },
+      supportingArticles: newsResult.supportingArticles.slice(0, 5),
+      contradictingArticles: newsResult.contradictingArticles.slice(0, 5),
       reasoning: "AI verdict combined with real-time news verification and source credibility",
     },
   };
