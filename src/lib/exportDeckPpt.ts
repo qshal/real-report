@@ -176,7 +176,6 @@ export const exportFakeNewsDeckPpt = async () => {
       h,
       fill: { color: bar.color },
       line: { color: bar.color },
-      radius: 0.06,
     });
     poc.addText(bar.label, {
       x,
