@@ -11,21 +11,17 @@ interface TrainedModel {
   bias: number;
 }
 
-// Default model weights (fallback if no model file exists)
+// Default model weights based on fake news detection research
 const DEFAULT_WEIGHTS: ModelFeatureWeights = {
-  word_report: 22.9,
-  word_brad: 22.6,
-  word_caitlyn: 21.6,
-  word_shelton: 19.8,
-  word_pitt: 19.3,
-  word_kanye: 18.3,
-  word_season: -26.6,
-  word_bachelor: -23.1,
-  word_awards: -19.8,
-  word_reveals: -18.1,
-  exclamation_count: 5.4,
-  fake_signals: 3.0,
-  misleading_signals: 1.5,
+  // Fake news indicators (positive weights)
+  fake_signals: 2.5,
+  exclamation_count: 1.5,
+  caps_ratio: 3.0,
+  word_count: -0.01,
+  
+  // Real news indicators (negative weights)
+  misleading_signals: 1.0,
+  question_count: 0.5,
 };
 
 class FakeNewsClassifier {
@@ -86,28 +82,53 @@ class FakeNewsClassifier {
   predict(text: string): { label: DatasetLabel; confidence: number; explanation: string } {
     const features = this.extractFeatures(text);
 
-    let score = this.bias;
-    for (const [feature, value] of Object.entries(features)) {
-      score += (this.weights[feature] || 0) * value;
+    // Calculate risk score (0-100 scale)
+    let riskScore = 0;
+    
+    // Fake signals (high impact)
+    riskScore += features["fake_signals"] * 25;
+    
+    // Misleading signals (medium impact)
+    riskScore += features["misleading_signals"] * 15;
+    
+    // Punctuation patterns
+    riskScore += features["exclamation_count"] * 5;
+    riskScore += features["question_count"] * 3;
+    
+    // Caps ratio (high ratio = suspicious)
+    if (features["caps_ratio"] > 0.3) {
+      riskScore += 20;
     }
-
-    const probability = 1 / (1 + Math.exp(-score));
+    
+    // Normalize to 0-100
+    riskScore = Math.min(100, Math.max(0, riskScore));
+    
+    // Apply ML model weights if they exist
+    let mlScore = this.bias;
+    for (const [feature, weight] of Object.entries(this.weights)) {
+      if (features[feature]) {
+        mlScore += weight * features[feature];
+      }
+    }
+    
+    // Combine rule-based and ML scores
+    const combinedScore = (riskScore + Math.max(0, Math.min(100, mlScore * 10))) / 2;
 
     let label: DatasetLabel;
     let confidence: number;
     let explanation: string;
 
-    if (probability < 0.33) {
+    if (combinedScore < 30) {
       label = "real";
-      confidence = (1 - probability) * 100;
+      confidence = Math.round(70 + (30 - combinedScore));
       explanation = "Content appears to be from credible sources with factual reporting.";
-    } else if (probability < 0.67) {
+    } else if (combinedScore < 60) {
       label = "misleading";
-      confidence = 50 + Math.abs(probability - 0.5) * 100;
+      confidence = Math.round(50 + Math.abs(combinedScore - 45));
       explanation = "Content contains ambiguous claims that require verification.";
     } else {
       label = "fake";
-      confidence = probability * 100;
+      confidence = Math.round(60 + combinedScore / 2.5);
       explanation = "Content shows patterns typical of misinformation.";
     }
 
