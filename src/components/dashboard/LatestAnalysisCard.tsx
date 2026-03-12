@@ -98,7 +98,7 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
           </div>
 
           {/* Component Scores Breakdown - For Reference Only */}
-          {componentScores && (
+          {componentScores && typeof componentScores.aiScore === 'number' && (
             <>
               <Separator className="my-3" />
               <div className="space-y-2">
@@ -137,55 +137,65 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
                         <div className="h-full bg-blue-500" style={{ width: `${componentScores.aiScore}%` }} />
                       </div>
                       <span className="font-semibold w-8 text-right">{componentScores.aiScore}%</span>
-                      <span className="text-muted-foreground w-6">{componentScores.weights.ai}</span>
+                      {componentScores.weights?.ai && (
+                        <span className="text-muted-foreground w-6">{componentScores.weights.ai}</span>
+                      )}
                     </div>
                   </div>
 
                   {/* News Score */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Newspaper className="h-3 w-3 text-green-500" />
-                      <span>News Verification</span>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Info className="h-3 w-3 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>NewsAPI verification score</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500" style={{ width: `${componentScores.newsScore}%` }} />
+                  {typeof componentScores.newsScore === 'number' && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Newspaper className="h-3 w-3 text-green-500" />
+                        <span>News Verification</span>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Info className="h-3 w-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>NewsAPI verification score</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
-                      <span className="font-semibold w-8 text-right">{componentScores.newsScore}%</span>
-                      <span className="text-muted-foreground w-6">{componentScores.weights.news}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500" style={{ width: `${componentScores.newsScore}%` }} />
+                        </div>
+                        <span className="font-semibold w-8 text-right">{componentScores.newsScore}%</span>
+                        {componentScores.weights?.news && (
+                          <span className="text-muted-foreground w-6">{componentScores.weights.news}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Source Score */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Globe className="h-3 w-3 text-purple-500" />
-                      <span>Source Credibility</span>
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Info className="h-3 w-3 text-muted-foreground" />
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>Domain reputation score (Tier 1-6)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                        <div className="h-full bg-purple-500" style={{ width: `${componentScores.sourceScore}%` }} />
+                  {typeof componentScores.sourceScore === 'number' && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Globe className="h-3 w-3 text-purple-500" />
+                        <span>Source Credibility</span>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <Info className="h-3 w-3 text-muted-foreground" />
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Domain reputation score (Tier 1-6)</p>
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
-                      <span className="font-semibold w-8 text-right">{componentScores.sourceScore}%</span>
-                      <span className="text-muted-foreground w-6">{componentScores.weights.source}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div className="h-full bg-purple-500" style={{ width: `${componentScores.sourceScore}%` }} />
+                        </div>
+                        <span className="font-semibold w-8 text-right">{componentScores.sourceScore}%</span>
+                        {componentScores.weights?.source && (
+                          <span className="text-muted-foreground w-6">{componentScores.weights.source}</span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {componentScores.note && (
