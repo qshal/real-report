@@ -139,6 +139,8 @@ export async function searchTrustedNews(
     }
     
     const data = await response.json();
+    console.log("NewsAPI response:", data);
+    
     const articles: NewsArticle[] = (data.articles || [])
       .map((article: {
         title: string;
@@ -150,14 +152,13 @@ export async function searchTrustedNews(
       }) => ({
         title: article.title,
         url: article.url,
-        source: article.source.name,
+        source: article.source?.name || "Unknown",
         publishedAt: article.publishedAt,
         snippet: article.description || article.content || "",
         relevanceScore: calculateRelevance(article.title + " " + (article.description || ""), claim),
       }))
-      .filter((article: NewsArticle) => isTrustedSource(article.url) || isMediumSource(article.url))
       .sort((a: NewsArticle, b: NewsArticle) => b.relevanceScore - a.relevanceScore)
-      .slice(0, 10);
+      .slice(0, 15);
     
     const trustedCount = articles.filter(a => isTrustedSource(a.url)).length;
     

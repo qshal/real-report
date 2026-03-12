@@ -57,7 +57,11 @@ export const LatestAnalysisCard = ({ item }: { item?: Row }) => {
   const newsVerification = metadata?.newsVerification as NewsVerification | undefined;
   const supportingArticles = metadata?.supportingArticles as NewsArticle[] | undefined;
   const contradictingArticles = metadata?.contradictingArticles as NewsArticle[] | undefined;
-  const hasNewsResults = newsVerification && newsVerification.trustedSourcesFound > 0;
+  
+  // Show articles if we have any results
+  const hasNewsResults = (supportingArticles && supportingArticles.length > 0) || 
+                         (contradictingArticles && contradictingArticles.length > 0) ||
+                         (newsVerification && newsVerification.trustedSourcesFound > 0);
 
   return (
     <Card className="glass-panel">
