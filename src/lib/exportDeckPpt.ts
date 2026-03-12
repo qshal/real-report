@@ -44,7 +44,7 @@ const addBulletList = (slide: PptxGenJS.Slide, points: string[], x = 0.8, y = 1.
     fontSize: 22,
     color: COLORS.text,
     breakLine: true,
-    paraSpaceAfterPt: 14,
+    paraSpaceAfter: 14,
   });
 };
 
