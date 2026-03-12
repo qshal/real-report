@@ -1,8 +1,8 @@
 /**
- * AI-Powered Fact Checking using Mistral AI API
+ * AI-Powered Fact Checking using OpenRouter (Free Tier)
  * 
- * This uses a large language model to analyze claims for factual accuracy
- * even when they haven't been previously fact-checked.
+ * OpenRouter provides free access to open-source LLMs
+ * No API key required for many models
  */
 
 export interface AIFactCheckResult {
@@ -13,21 +13,16 @@ export interface AIFactCheckResult {
   potentialIssues: string[];
 }
 
-// Using Mistral AI API (free tier available)
-const MISTRAL_API_URL = "https://api.mistral.ai/v1/chat/completions";
+// Using OpenRouter API (free tier available)
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 /**
- * Analyze text using Mistral AI for factual accuracy
+ * Analyze text using OpenRouter AI for factual accuracy
  */
 export async function analyzeWithAI(
   text: string,
   apiKey?: string
 ): Promise<AIFactCheckResult | null> {
-  if (!apiKey) {
-    console.warn("No Mistral API key provided");
-    return null;
-  }
-
   const systemPrompt = `You are a fact-checking AI. Analyze text for factual accuracy.
 Respond ONLY in this exact JSON format:
 {
@@ -43,27 +38,32 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
   const userPrompt = `Text to analyze: """${text.slice(0, 2000)}"""`;
 
   try {
-    const response = await fetch(MISTRAL_API_URL, {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    
+    // Add Authorization header if API key is provided
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
+
+    const response = await fetch(OPENROUTER_API_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-      },
+      headers,
       body: JSON.stringify({
-        model: "mistral-small-latest",
+        model: "meta-llama/llama-3.2-3b-instruct:free",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
         temperature: 0.1,
         max_tokens: 800,
-        response_format: { type: "json_object" },
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("Mistral API error:", response.status, errorText);
+      console.error("OpenRouter API error:", response.status, errorText);
       
       // Return error info for debugging
       return {
@@ -79,11 +79,18 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
     const generatedText = data.choices?.[0]?.message?.content;
 
     if (!generatedText) {
-      console.error("No response from Mistral");
+      console.error("No response from OpenRouter");
       return null;
     }
 
-    const result: AIFactCheckResult = JSON.parse(generatedText);
+    // Extract JSON from the response
+    const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error("Could not parse OpenRouter response:", generatedText);
+      return null;
+    }
+
+    const result: AIFactCheckResult = JSON.parse(jsonMatch[0]);
     return result;
   } catch (error) {
     console.error("AI analysis error:", error);
@@ -92,10 +99,10 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
 }
 
 /**
- * Get Mistral API key from environment
+ * Get API key from environment (optional for OpenRouter free tier)
  */
 export function getGeminiApiKey(): string | undefined {
-  return import.meta.env.VITE_MISTRAL_API_KEY;
+  return import.meta.env.VITE_OPENROUTER_API_KEY;
 }
 
 /**
