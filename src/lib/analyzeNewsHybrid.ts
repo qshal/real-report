@@ -1,4 +1,5 @@
 import { predictFakeNews } from "@/lib/modelLoader";
+import { analyzeWithFactCheck, getFactCheckApiKey } from "@/lib/factCheckApi";
 import type { PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 
 export type AnalyzeNewsPayload =
@@ -43,11 +44,34 @@ const metadataRiskScore = (text: string) => {
   };
 };
 
-// Client-side analysis using trained ML model
+// Client-side analysis using ML model + Fact Check API
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const content = payload.inputType === "text" ? payload.text : payload.url;
   
-  // Get ML prediction
+  // Step 1: Check against fact-checking databases
+  const apiKey = getFactCheckApiKey();
+  const factCheckResult = await analyzeWithFactCheck(content, apiKey);
+  
+  // If found in fact-check database, use that result
+  if (factCheckResult.hasFactCheck && factCheckResult.isReliable !== undefined) {
+    const label: PredictionLabel = factCheckResult.isReliable ? "real" : "fake";
+    const confidence = 85; // High confidence since it's verified by fact-checkers
+    
+    return {
+      label,
+      confidence,
+      explanation: `Verified by ${factCheckResult.publisher}: "${factCheckResult.rating}". ${factCheckResult.isReliable ? "This claim has been fact-checked and found to be accurate." : "This claim has been fact-checked and found to be false or misleading."}`,
+      modelName: "fact-check-api",
+      metadata: {
+        factCheckSource: factCheckResult.publisher,
+        factCheckUrl: factCheckResult.url,
+        factCheckRating: factCheckResult.rating,
+        verified: true,
+      },
+    };
+  }
+  
+  // Step 2: Fall back to ML model if not in fact-check database
   const prediction = predictFakeNews(content);
   
   // Get metadata risk score
@@ -74,6 +98,7 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
       fakeProbability,
       trustScore,
       riskBand,
+      factChecked: false,
     },
   };
 };
