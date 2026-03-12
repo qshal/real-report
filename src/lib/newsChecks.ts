@@ -16,10 +16,29 @@ export const listUserNewsChecks = async (userId: string, limit = 100) => {
   return data as NewsCheck[];
 };
 
+const isRetryableError = (error: unknown) => {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return message.includes("failed to fetch") || message.includes("network") || message.includes("timeout");
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const createNewsCheck = async (payload: TablesInsert<"news_checks"> & Record<string, unknown>) => {
-  const { data, error } = await supabase.from("news_checks").insert(payload).select("*").single();
-  if (error) throw error;
-  return data as NewsCheck;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const { data, error } = await supabase.from("news_checks").insert(payload).select("*").single();
+      if (error) throw error;
+      return data as NewsCheck;
+    } catch (error) {
+      if (attempt === 0 && isRetryableError(error)) {
+        await sleep(300);
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error("Unable to persist analysis record.");
 };
 
 export const updateNewsCheckVerification = async (
