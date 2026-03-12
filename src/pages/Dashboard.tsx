@@ -61,7 +61,7 @@ const Dashboard = () => {
     return { total, fakeCount, avgConfidence };
   }, [history]);
 
-  const handleAnalyze = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleAnalyze = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) return;
 
