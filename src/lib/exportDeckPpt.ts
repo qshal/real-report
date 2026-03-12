@@ -216,7 +216,6 @@ export const exportFakeNewsDeckPpt = async () => {
     h: 5.2,
     fill: { color: COLORS.white },
     line: { color: COLORS.border, pt: 1 },
-    radius: 0.08,
   });
   poc.addText("Evaluation Snapshot", {
     x: 7.75,
