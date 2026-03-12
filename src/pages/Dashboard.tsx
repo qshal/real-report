@@ -111,7 +111,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleProfileSave = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleProfileSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!user) return;
 
