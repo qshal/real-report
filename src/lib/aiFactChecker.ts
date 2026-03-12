@@ -52,7 +52,7 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
         "X-Title": "Real Report Fact Checker",
       },
       body: JSON.stringify({
-        model: "mistralai/mistral-7b-instruct:free",
+        model: "meta-llama/llama-3.2-3b-instruct:free",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
