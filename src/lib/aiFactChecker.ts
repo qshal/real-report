@@ -1,8 +1,8 @@
 /**
- * AI-Powered Fact Checking using OpenRouter API
+ * AI-Powered Fact Checking using Pollinations AI (Free, No API Key)
  * 
- * OpenRouter provides access to various LLMs
- * Get API key from: https://openrouter.ai/keys
+ * Pollinations provides free text generation without API keys
+ * Website: https://pollinations.ai
  */
 
 export interface AIFactCheckResult {
@@ -13,22 +13,20 @@ export interface AIFactCheckResult {
   potentialIssues: string[];
 }
 
-// Using OpenRouter API
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+// Using Pollinations AI (completely free, no API key needed)
+const POLLINATIONS_API_URL = "https://text.pollinations.ai";
 
 /**
- * Analyze text using OpenRouter AI for factual accuracy
+ * Analyze text using Pollinations AI for factual accuracy
  */
 export async function analyzeWithAI(
   text: string,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<AIFactCheckResult | null> {
-  if (!apiKey) {
-    console.warn("No OpenRouter API key provided");
-    return null;
-  }
+  const prompt = `You are a fact-checking AI. Analyze the following text for factual accuracy.
 
-  const systemPrompt = `You are a fact-checking AI. Analyze text for factual accuracy.
+Text to analyze: """${text.slice(0, 2000)}"""
+
 Respond ONLY in this exact JSON format:
 {
   "isFactual": boolean (true if mostly factual, false if contains false/misleading claims),
@@ -40,31 +38,17 @@ Respond ONLY in this exact JSON format:
 
 Be critical and skeptical. Common knowledge and opinions are fine, but specific facts, statistics, and scientific claims should be flagged if they seem questionable.`;
 
-  const userPrompt = `Text to analyze: """${text.slice(0, 2000)}"""`;
-
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
+    const response = await fetch(`${POLLINATIONS_API_URL}/${encodeURIComponent(prompt)}?model=openai&seed=42&json=true`, {
+      method: "GET",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://real-report.vercel.app",
-        "X-Title": "Real Report Fact Checker",
       },
-      body: JSON.stringify({
-        model: "meta-llama/llama-3.2-3b-instruct:free",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
-        ],
-        temperature: 0.1,
-        max_tokens: 800,
-      }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("OpenRouter API error:", response.status, errorText);
+      console.error("Pollinations API error:", response.status, errorText);
       
       // Return error info for debugging
       return {
@@ -76,18 +60,17 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
       };
     }
 
-    const data = await response.json();
-    const generatedText = data.choices?.[0]?.message?.content;
+    const generatedText = await response.text();
 
     if (!generatedText) {
-      console.error("No response from OpenRouter");
+      console.error("No response from Pollinations");
       return null;
     }
 
     // Extract JSON from the response
     const jsonMatch = generatedText.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
-      console.error("Could not parse OpenRouter response:", generatedText);
+      console.error("Could not parse Pollinations response:", generatedText);
       return null;
     }
 
@@ -100,10 +83,10 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
 }
 
 /**
- * Get OpenRouter API key from environment
+ * Get API key from environment (not needed for Pollinations)
  */
 export function getGeminiApiKey(): string | undefined {
-  return import.meta.env.VITE_OPENROUTER_API_KEY;
+  return undefined;
 }
 
 /**
