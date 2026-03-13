@@ -3,7 +3,29 @@
  * Creates immutable chain of analyses with unique verification codes
  */
 
-import { createHash } from 'crypto';
+/**
+ * Browser-compatible SHA-256 hash function
+ */
+async function sha256(message: string): Promise<string> {
+  const msgBuffer = new TextEncoder().encode(message);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+}
+
+/**
+ * Synchronous hash for compatibility (uses simple hash)
+ */
+function simpleHash(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(16).padStart(16, '0');
+}
 
 export interface AnalysisBlock {
   blockNumber: number;
@@ -88,7 +110,7 @@ class AnalysisBlockchain {
    * Calculate checksum for verification code
    */
   private calculateChecksum(input: string): string {
-    const hash = createHash('sha256').update(input).digest('hex');
+    const hash = simpleHash(input);
     return hash.substring(0, 4).toUpperCase();
   }
 
@@ -106,14 +128,14 @@ class AnalysisBlockchain {
       nonce: block.nonce,
     });
 
-    return createHash('sha256').update(data).digest('hex');
+    return simpleHash(data);
   }
 
   /**
    * Calculate content hash from input
    */
   private calculateContentHash(input: string): string {
-    return createHash('sha256').update(input.toLowerCase().trim()).digest('hex');
+    return simpleHash(input.toLowerCase().trim());
   }
 
   /**
