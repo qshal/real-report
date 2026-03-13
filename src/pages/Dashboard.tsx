@@ -11,6 +11,10 @@ import { ModelPerformanceCard } from "@/components/dashboard/ModelPerformanceCar
 import { TrainingGraphs } from "@/components/dashboard/TrainingGraphs";
 import { NLPModelComparison } from "@/components/dashboard/NLPModelComparison";
 import { NLPFeatureAnalysisCard } from "@/components/dashboard/NLPFeatureAnalysis";
+import { BlockchainSearchCard } from "@/components/dashboard/BlockchainSearchCard";
+import { BlockchainStatsCard } from "@/components/dashboard/BlockchainStatsCard";
+import { getBlockchain } from "@/lib/analysisBlockchain";
+import { analyzeNLPFeatures } from "@/lib/nlpModelComparison";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -116,6 +120,28 @@ const Dashboard = () => {
       const trustScore = hybridPrediction.confidence / 100;
       const sourceUrl = parsedPayload.inputType === "url" ? parsedPayload.url : undefined;
 
+      // Extract NLP features
+      const nlpFeatures = analyzeNLPFeatures(contentForBlockchain);
+
+      // Add to blockchain
+      const blockchain = getBlockchain();
+      const block = blockchain.addAnalysis(
+        contentForBlockchain,
+        parsedPayload.inputType,
+        hybridPrediction.label,
+        hybridPrediction.confidence,
+        trustScore * 100,
+        hybridPrediction.explanation,
+        hybridPrediction.modelName,
+        {
+          sentiment: nlpFeatures.sentimentScore,
+          clickbait: nlpFeatures.clickbaitScore,
+          readability: nlpFeatures.readabilityScore,
+        }
+      );
+
+      toast.success(`Analysis added to blockchain! Code: ${block.verificationCode}`);
+
       // Store on blockchain (non-blocking - don't wait for it)
       let blockchainResult = null;
       try {
@@ -152,6 +178,12 @@ const Dashboard = () => {
           error: blockchainResult.error,
           transactionUrl: blockchainResult.txHash ? getTransactionUrl(blockchainResult.txHash) : null,
         } : null,
+        analysisBlockchain: {
+          verificationCode: block.verificationCode,
+          blockNumber: block.blockNumber,
+          blockHash: block.hash,
+          timestamp: block.timestamp,
+        },
       };
 
       const saved = (await createNewsCheck({
@@ -267,6 +299,12 @@ const Dashboard = () => {
         {/* NLP Feature Analysis Section */}
         <NLPFeatureAnalysisCard text={latestResult?.input_text || undefined} />
 
+        {/* Blockchain Search and Stats Section */}
+        <section className="grid gap-4 lg:grid-cols-2">
+          <BlockchainSearchCard />
+          <BlockchainStatsCard />
+        </section>
+
         {/* Dataset Management Section */}
         <section className="grid gap-4 lg:grid-cols-2">
           <DatasetManagerCard />
@@ -371,6 +409,11 @@ const Dashboard = () => {
                               ✓ On-chain
                             </Badge>
                           )}
+                          {(item.analysis_metadata as any)?.analysisBlockchain && (
+                            <Badge variant="outline" className="border-purple-500/30 bg-purple-500/10 text-purple-600">
+                              Block #{(item.analysis_metadata as any).analysisBlockchain.blockNumber}
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
                       </div>
@@ -383,6 +426,16 @@ const Dashboard = () => {
                         {meta.trustScore !== null ? <span>Trust score: <span className="font-semibold">{meta.trustScore}%</span></span> : null}
                       </div>
                       <p className="text-sm text-muted-foreground">{item.explanation}</p>
+                      {(item.analysis_metadata as any)?.analysisBlockchain && (
+                        <div className="mt-2 p-2 bg-purple-500/5 border border-purple-500/20 rounded">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="text-muted-foreground">Verification Code:</span>
+                            <code className="text-purple-600 font-mono">
+                              {(item.analysis_metadata as any).analysisBlockchain.verificationCode}
+                            </code>
+                          </div>
+                        </div>
+                      )}
                       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-3">
                         <div className="flex flex-wrap gap-2">
                           <Button
