@@ -9,6 +9,8 @@ import { LatestAnalysisCard } from "@/components/dashboard/LatestAnalysisCard";
 import { ModelComparisonCard } from "@/components/dashboard/ModelComparisonCard";
 import { ModelPerformanceCard } from "@/components/dashboard/ModelPerformanceCard";
 import { TrainingGraphs } from "@/components/dashboard/TrainingGraphs";
+import { NLPModelComparison } from "@/components/dashboard/NLPModelComparison";
+import { NLPFeatureAnalysisCard } from "@/components/dashboard/NLPFeatureAnalysis";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -259,6 +261,12 @@ const Dashboard = () => {
         {/* Training Graphs Section */}
         <TrainingGraphs />
 
+        {/* NLP Model Comparison Section */}
+        <NLPModelComparison />
+
+        {/* NLP Feature Analysis Section */}
+        <NLPFeatureAnalysisCard text={latestResult?.input_text || undefined} />
+
         {/* Dataset Management Section */}
         <section className="grid gap-4 lg:grid-cols-2">
           <DatasetManagerCard />
@@ -358,15 +366,10 @@ const Dashboard = () => {
                             </Badge>
                           ) : null}
                           {meta.riskBand ? <Badge variant="outline">Risk: {meta.riskBand}</Badge> : null}
-                          {/* Add blockchain verification badge */}
-                          {(item.analysis_metadata as any)?.blockchainVerification && (
-                            <BlockchainVerificationBadge 
-                              analysis={{ 
-                                blockchain: (item.analysis_metadata as any).blockchainVerification,
-                                metadata: item.analysis_metadata 
-                              } as any} 
-                              compact 
-                            />
+                          {(item.analysis_metadata as any)?.blockchainVerification?.success && (
+                            <Badge variant="outline" className="border-green-500/30 bg-green-500/10 text-green-600">
+                              ✓ On-chain
+                            </Badge>
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
