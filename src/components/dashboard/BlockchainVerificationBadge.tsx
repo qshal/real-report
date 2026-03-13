@@ -13,6 +13,7 @@ interface BlockchainVerificationBadgeProps {
       duplicate?: boolean;
       previousVerification?: NewsVerificationRecord;
       error?: string;
+      transactionUrl?: string;
     };
     metadata?: any;
   };
@@ -28,6 +29,7 @@ export const BlockchainVerificationBadge = ({ analysis, compact = false }: Block
 
   const hasTxHash = !!verification.txHash;
   const isDuplicate = verification.duplicate === true;
+  const transactionUrl = verification.transactionUrl || (verification.txHash ? getTransactionUrl(verification.txHash) : null);
 
   if (compact) {
     return (
@@ -45,9 +47,9 @@ export const BlockchainVerificationBadge = ({ analysis, compact = false }: Block
           <TooltipContent>
             <div className="space-y-1 text-xs">
               <p>{isDuplicate ? "Already verified on blockchain" : "Verified on blockchain"}</p>
-              {hasTxHash && (
+              {hasTxHash && transactionUrl && (
                 <a
-                  href={getTransactionUrl(verification.txHash!)}
+                  href={transactionUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand hover:underline flex items-center gap-1"
@@ -55,6 +57,11 @@ export const BlockchainVerificationBadge = ({ analysis, compact = false }: Block
                 >
                   View Transaction <Link2 className="h-3 w-3" />
                 </a>
+              )}
+              {verification.articleHash && (
+                <p className="text-muted-foreground font-mono text-xs">
+                  Hash: {verification.articleHash.slice(0, 10)}...
+                </p>
               )}
             </div>
           </TooltipContent>
@@ -70,9 +77,9 @@ export const BlockchainVerificationBadge = ({ analysis, compact = false }: Block
     >
       <CheckCircle2 className="h-3 w-3 mr-1" />
       {isDuplicate ? "Verified (Duplicate)" : "Blockchain Verified"}
-      {hasTxHash && (
+      {hasTxHash && transactionUrl && (
         <a
-          href={getTransactionUrl(verification.txHash!)}
+          href={transactionUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="ml-2 hover:underline"

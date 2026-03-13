@@ -57,7 +57,13 @@ Be critical and skeptical. Common knowledge and opinions are fine, but specific 
       const errorText = await response.text();
       console.error("Pollinations API error:", response.status, errorText);
       
-      // Return error info for debugging
+      // For 502 Bad Gateway or other server errors, return null to trigger fallback
+      if (response.status === 502 || response.status >= 500) {
+        console.warn("Pollinations API server error, returning null for fallback");
+        return null;
+      }
+      
+      // Return error info for other errors
       return {
         isFactual: false,
         confidence: 0,

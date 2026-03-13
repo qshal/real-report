@@ -123,6 +123,9 @@ export function extractClaim(text: string): string {
  * Extract 5 key search terms from text for NewsAPI
  */
 function extractSearchTerms(text: string): string {
+  // Remove URLs to prevent corruption in search terms
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s]+/gi, "");
+  
   // Remove common stop words
   const stopWords = new Set([
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -136,7 +139,7 @@ function extractSearchTerms(text: string): string {
   ]);
   
   // Extract words, filter out stop words and short words
-  const words = text
+  const words = textWithoutUrls
     .toLowerCase()
     .replace(/[^\w\s]/g, "")
     .split(/\s+/)
@@ -198,6 +201,10 @@ export async function searchTrustedNews(
       if (response.status === 429) {
         console.warn("NewsAPI rate limited, using fallback");
         return getFallbackResult(claim, "NewsAPI rate limited. Please try again later.");
+      }
+      if (response.status === 426) {
+        console.warn("NewsAPI upgrade required, using fallback");
+        return getFallbackResult(claim, "NewsAPI plan upgrade required. Using AI-only analysis.");
       }
       throw new Error(`NewsAPI error: ${response.status}`);
     }

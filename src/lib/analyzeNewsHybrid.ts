@@ -34,17 +34,35 @@ const withTimeout = <T>(promise: Promise<T>, timeoutMs: number, fallback: T): Pr
 };
 
 /**
+ * Normalize URL by ensuring it has a protocol
+ */
+function normalizeUrl(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+  
+  // If URL doesn't start with http:// or https://, add https://
+  if (!trimmed.match(/^https?:\/\//i)) {
+    return `https://${trimmed}`;
+  }
+  
+  return trimmed;
+}
+
+/**
  * Fetch and extract content from a URL
  * Uses multiple strategies including CORS proxies and fallback methods
  */
 async function fetchUrlContent(url: string): Promise<{ title: string; content: string; error?: string }> {
+  // Normalize URL to ensure it has proper protocol
+  const normalizedUrl = normalizeUrl(url);
+  
   try {
     // Strategy 1: Try direct fetch first (works for CORS-enabled sites)
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
       
-      const response = await fetch(url, {
+      const response = await fetch(normalizedUrl, {
         signal: controller.signal,
         headers: {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -70,7 +88,7 @@ async function fetchUrlContent(url: string): Promise<{ title: string; content: s
     const corsProxies = [
       { 
         name: 'AllOrigins',
-        url: `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`,
+        url: `https://api.allorigins.win/get?url=${encodeURIComponent(normalizedUrl)}`,
         extract: async (res: Response) => {
           const data = await res.json();
           if (data.status?.http_code && data.status.http_code !== 200) {
@@ -81,22 +99,22 @@ async function fetchUrlContent(url: string): Promise<{ title: string; content: s
       },
       { 
         name: 'CorsProxy',
-        url: `https://corsproxy.io/?${encodeURIComponent(url)}`,
+        url: `https://corsproxy.io/?${encodeURIComponent(normalizedUrl)}`,
         extract: async (res: Response) => res.text()
       },
       {
         name: 'ThingProxy',
-        url: `https://thingproxy.freeboard.io/fetch/${url}`,
+        url: `https://thingproxy.freeboard.io/fetch/${normalizedUrl}`,
         extract: async (res: Response) => res.text()
       },
       {
         name: 'CorsAnywhere',
-        url: `https://cors-anywhere.herokuapp.com/${url}`,
+        url: `https://cors-anywhere.herokuapp.com/${normalizedUrl}`,
         extract: async (res: Response) => res.text()
       }
     ];
     
-    let bestResult = { title: "", content: "", error: "" };
+    let bestResult: { title: string; content: string; error?: string } = { title: "", content: "" };
     
     for (const proxy of corsProxies) {
       try {
@@ -139,11 +157,11 @@ async function fetchUrlContent(url: string): Promise<{ title: string; content: s
     }
     
     // Strategy 4: Fallback to URL analysis
-    return analyzeUrlFallback(url);
+    return analyzeUrlFallback(normalizedUrl);
     
   } catch (error) {
     console.error('All URL fetch strategies failed:', error);
-    return analyzeUrlFallback(url);
+    return analyzeUrlFallback(normalizedUrl);
   }
 }
 
@@ -293,7 +311,7 @@ Note: Could not fetch the actual article content. Analysis will be based on URL 
 export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<HybridAnalysisResult> => {
   const isUrl = payload.inputType === "url";
   
-  // Fetch URL content if it's a URL
+  // Extract content for analysis
   let urlContent: { title: string; content: string; error?: string } | null = null;
   let contentToAnalyze: string;
   
@@ -302,7 +320,6 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
     urlContent = await fetchUrlContent(url);
     
     if (urlContent.error || !urlContent.content || urlContent.content === 'No content extracted') {
-      // Fallback: analyze just the URL if we can't fetch content
       contentToAnalyze = `URL: ${url}\nTitle: ${urlContent.title || 'Unknown'}\nNote: Could not fetch article content. Analyzing based on URL and title only.`;
     } else {
       contentToAnalyze = `ARTICLE FROM URL: ${url}\n\nTITLE: ${urlContent.title || 'No title'}\n\nARTICLE CONTENT:\n${urlContent.content}\n\nAnalyze the above article content for factual accuracy.`;
@@ -312,19 +329,15 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   }
   
   const claim = extractClaim(contentToAnalyze);
-
-  // Pollinations AI doesn't need API key
   const apiKey = getGeminiApiKey();
 
   // Run AI analysis (primary) and NewsAPI search (secondary) in parallel with timeouts
   const [aiResult, newsResult] = await Promise.all([
-    // AI analysis is critical - 15 second timeout
     withTimeout(
       analyzeWithAI(contentToAnalyze, apiKey),
       15000,
       null
     ),
-    // NewsAPI is supplementary - 5 second timeout, fallback to empty result
     withTimeout(
       searchTrustedNews(claim, getNewsApiKey()),
       5000,
@@ -352,12 +365,11 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
   const sourceCredibilityResult = isUrl ? analyzeSourceCredibility(payload.url) : null;
   
   // AI-ONLY VERDICT: Use only AI for the final label and confidence
-  // News and Source are shown for transparency but don't affect the verdict
   const label: PredictionLabel = aiResult.isFactual ? "real" : "fake";
   const confidence = aiResult.confidence;
   const confidenceReason = "AI verdict";
   
-  // Build context info for display only (doesn't affect verdict)
+  // Build context info for display only
   let newsContext = "";
   if (newsResult.trustedSourcesFound > 0) {
     if (newsResult.fakeProbability < 30) {
@@ -369,46 +381,82 @@ export const analyzeNewsHybrid = async (payload: AnalyzeNewsPayload): Promise<Hy
 
   const adjustedConfidence = clampConfidence(confidence);
 
-  // Calculate weighted trust score from three components:
-  // 1. AI Score (40% weight) - from Pollinations AI analysis
-  // 2. NLP/News Score (35% weight) - from NewsAPI verification
-  // 3. Source Credibility Score (25% weight) - from domain reputation
-  
-  // Normalize AI score to 0-100 (already in that range)
+  // Calculate weighted trust score from three components
   const aiScore = aiResult.confidence;
-  
-  // Normalize News/NLP score (inverse of fake probability, 0-100)
   const newsScore = newsResult.trustedSourcesFound > 0 
     ? 100 - newsResult.fakeProbability 
-    : 50; // Neutral if no news data
-  
-  // Normalize Source Credibility score (0-100)
+    : 50;
   const sourceScore = sourceCredibilityResult 
     ? sourceCredibilityResult.credibilityScore * 100 
-    : 50; // Neutral if no URL analysis
+    : 50;
   
-  // Weighted calculation
   const finalTrustScore = Math.round(
     (aiScore * 0.40) +      // AI: 40% weight
     (newsScore * 0.35) +    // News/NLP: 35% weight
     (sourceScore * 0.25)    // Source: 25% weight
   );
+  
+  const fakeProbability = label === "fake" ? adjustedConfidence : (label === "real" ? 100 - adjustedConfidence : 50);
+  
+  let riskBand = "medium";
+  if (finalTrustScore >= 80) riskBand = "low";
+  else if (finalTrustScore <= 30) riskBand = "high";
+  else if (finalTrustScore >= 60) riskBand = "low-medium";
+  else riskBand = "medium-high";
 
-  // Return a basic result for now - this function needs completion
   return {
-    label: aiResult.isFactual ? "real" : "fake",
-    confidence: clampConfidence(aiResult.confidence),
-    explanation: `AI verdict: ${aiResult.isFactual ? 'REAL' : 'FAKE'}. ${aiResult.explanation}`,
-    modelName: "truthchain-ai",
+    label,
+    confidence: adjustedConfidence,
+    explanation: `AI verdict: ${label.toUpperCase()}. ${aiResult.explanation}`,
+    modelName: "url-enhanced-ai",
     metadata: {
-      claim: extractClaim(contentToAnalyze),
+      claim,
+      aiAnalyzed: true,
+      aiConfidence: aiResult.confidence,
+      adjustedConfidence,
+      confidenceReason,
+      isFactual: aiResult.isFactual,
+      keyClaims: aiResult.keyClaims,
+      potentialIssues: aiResult.potentialIssues,
+      // URL content (if applicable)
+      urlContent: isUrl ? {
+        url: payload.url,
+        title: urlContent?.title || null,
+        content: urlContent?.content?.slice(0, 500) || null,
+        fetchError: urlContent?.error || null,
+        contentLength: urlContent?.content?.length || 0,
+        extractionMethod: urlContent?.error ? 'fallback' : 'direct',
+      } : null,
+      // Supplementary info
+      sourceDomain: sourceCredibilityResult?.domain || null,
+      sourceCredibility: sourceCredibilityResult?.credibilityScore || null,
+      sourceTier: sourceCredibilityResult?.tier || null,
+      newsContext: newsContext || null,
+      fakeProbability,
+      riskBand,
       finalTrustScore,
-      aiScore: Math.round(aiResult.confidence),
-      newsScore: Math.round(newsScore),
-      sourceScore: Math.round(sourceScore),
+      // Component scores
+      componentScores: {
+        aiScore: Math.round(aiScore),
+        newsScore: Math.round(newsScore),
+        sourceScore: Math.round(sourceScore),
+        weights: {
+          ai: "40%",
+          news: "35%", 
+          source: "25%"
+        },
+        note: "AI analysis is primary, other scores provide context"
+      },
+      newsVerification: {
+        trustedSourcesFound: newsResult.trustedSourcesFound,
+        supportingArticles: newsResult.supportingArticles.length,
+        contradictingArticles: newsResult.contradictingArticles.length,
+        fakeProbability: newsResult.fakeProbability,
+        reasoning: newsResult.reasoning,
+      },
+      supportingArticles: newsResult.supportingArticles.slice(0, 5),
+      contradictingArticles: newsResult.contradictingArticles.slice(0, 5),
+      reasoning: "Enhanced URL analysis with AI verification, news cross-referencing, and source credibility assessment.",
     },
   };
 };
-
-// Alternative implementation - just wraps the main function
-export const analyzeNewsHybridWithDuplicateCheck = analyzeNewsHybrid;

@@ -21,6 +21,7 @@ import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
 import { analysisSchema, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
+import { storeNewsVerification, getTransactionUrl } from "@/lib/blockchain";
 
 const profileSchema = z.object({
   displayName: z.string().trim().min(2, "Display name must be at least 2 characters.").max(60),
@@ -104,6 +105,53 @@ const Dashboard = () => {
     try {
       const hybridPrediction = await analyzeNewsHybrid(parsedPayload);
 
+      // Prepare content for blockchain storage
+      const contentForBlockchain = parsedPayload.inputType === "text" 
+        ? parsedPayload.text 
+        : `${parsedPayload.url}\n${(hybridPrediction.metadata as any)?.urlContent?.title || ""}\n${(hybridPrediction.metadata as any)?.urlContent?.content || ""}`;
+
+      // Calculate trust score from confidence and metadata
+      const trustScore = hybridPrediction.confidence / 100;
+      const sourceUrl = parsedPayload.inputType === "url" ? parsedPayload.url : undefined;
+
+      // Store on blockchain (non-blocking - don't wait for it)
+      let blockchainResult = null;
+      try {
+        blockchainResult = await storeNewsVerification(
+          contentForBlockchain,
+          hybridPrediction.label,
+          trustScore,
+          hybridPrediction.confidence / 100,
+          sourceUrl,
+          "hybrid_ai_analysis"
+        );
+
+        if (blockchainResult.success && blockchainResult.txHash) {
+          toast.success(`Analysis stored on blockchain! Transaction: ${blockchainResult.txHash.slice(0, 10)}...`);
+        } else if (blockchainResult.duplicate) {
+          toast.info("This analysis already exists on blockchain.");
+        } else if (blockchainResult.error) {
+          console.warn("Blockchain storage failed:", blockchainResult.error);
+          // Don't show error toast - blockchain is optional
+        }
+      } catch (blockchainError) {
+        console.warn("Blockchain storage error:", blockchainError);
+        // Continue even if blockchain storage fails
+      }
+
+      // Add blockchain verification to metadata
+      const metadataWithBlockchain = {
+        ...hybridPrediction.metadata,
+        blockchainVerification: blockchainResult ? {
+          success: blockchainResult.success,
+          txHash: blockchainResult.txHash,
+          articleHash: blockchainResult.articleHash,
+          duplicate: blockchainResult.duplicate,
+          error: blockchainResult.error,
+          transactionUrl: blockchainResult.txHash ? getTransactionUrl(blockchainResult.txHash) : null,
+        } : null,
+      };
+
       const saved = (await createNewsCheck({
         user_id: user.id,
         input_type: parsedPayload.inputType,
@@ -116,7 +164,7 @@ const Dashboard = () => {
         baseline_predicted_label: null,
         baseline_confidence: null,
         baseline_explanation: null,
-        analysis_metadata: hybridPrediction.metadata as Json,
+        analysis_metadata: metadataWithBlockchain as Json,
       })) as NewsCheck;
 
       setHistory((prev) => [saved, ...prev]);
@@ -198,7 +246,10 @@ const Dashboard = () => {
 
         <AnalysisOverviewCards history={history} />
 
-        <ModelComparisonCard history={history} />
+        <ModelComparisonCard history={history.map(item => ({
+          ...item,
+          analysis_metadata: item.analysis_metadata as Record<string, unknown> | null
+        }))} />
 
         {/* Blockchain Status Section */}
         <BlockchainStatusCard />

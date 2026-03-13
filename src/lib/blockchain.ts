@@ -43,7 +43,7 @@ const NETWORKS = {
   }
 };
 
-const NETWORK = import.meta.env.VITE_BLOCKCHAIN_NETWORK || 'polygon';
+const NETWORK = import.meta.env.VITE_BLOCKCHAIN_NETWORK || 'mumbai';
 const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
 const PIPELINE_VERSION = import.meta.env.VITE_PIPELINE_VERSION || "4.0.0";
 
@@ -116,6 +116,13 @@ export async function storeNewsVerification(
       return { 
         success: false, 
         error: "MetaMask not installed. Please install MetaMask to use blockchain features." 
+      };
+    }
+
+    if (!CONTRACT_ADDRESS) {
+      return {
+        success: false,
+        error: "Blockchain contract address not configured. Please set VITE_CONTRACT_ADDRESS environment variable."
       };
     }
 
@@ -192,6 +199,14 @@ export async function verifyNewsOnChain(
   articleText: string
 ): Promise<BlockchainVerifyResult> {
   try {
+    if (!CONTRACT_ADDRESS) {
+      return {
+        verified: false,
+        exists: false,
+        error: "Contract address not configured"
+      };
+    }
+
     const networkConfig = NETWORKS[NETWORK as keyof typeof NETWORKS];
     const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
     const contract = new ethers.Contract(CONTRACT_ADDRESS, TRUTHCHAIN_ABI, provider);
@@ -244,6 +259,18 @@ export async function getBlockchainStats(): Promise<{
   explorer: string;
 }> {
   try {
+    if (!CONTRACT_ADDRESS) {
+      const networkConfig = NETWORKS[NETWORK as keyof typeof NETWORKS];
+      return {
+        total: 0,
+        realCount: 0,
+        fakeCount: 0,
+        accuracy: 0,
+        network: networkConfig.name,
+        explorer: networkConfig.explorer
+      };
+    }
+
     const networkConfig = NETWORKS[NETWORK as keyof typeof NETWORKS];
     const provider = new ethers.JsonRpcProvider(networkConfig.rpcUrl);
     const contract = new ethers.Contract(CONTRACT_ADDRESS, TRUTHCHAIN_ABI, provider);
@@ -260,13 +287,14 @@ export async function getBlockchainStats(): Promise<{
     };
   } catch (error) {
     console.error("Failed to get blockchain stats:", error);
+    const networkConfig = NETWORKS[NETWORK as keyof typeof NETWORKS];
     return {
       total: 0,
       realCount: 0,
       fakeCount: 0,
       accuracy: 0,
-      network: NETWORKS[NETWORK as keyof typeof NETWORKS].name,
-      explorer: NETWORKS[NETWORK as keyof typeof NETWORKS].explorer
+      network: networkConfig.name,
+      explorer: networkConfig.explorer
     };
   }
 }
@@ -283,7 +311,7 @@ export function getBlockchainStatus(): {
   const networkConfig = NETWORKS[NETWORK as keyof typeof NETWORKS];
   
   return {
-    connected: !!CONTRACT_ADDRESS,
+    connected: !!window.ethereum && !!CONTRACT_ADDRESS,
     network: networkConfig.name,
     contractDeployed: !!CONTRACT_ADDRESS,
     explorer: networkConfig.explorer
@@ -312,3 +340,4 @@ declare global {
     ethereum?: any;
   }
 }
+
