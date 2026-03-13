@@ -3,12 +3,12 @@ import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisOverviewCards } from "@/components/dashboard/AnalysisOverviewCards";
-import { BlockchainStatusCard } from "@/components/dashboard/BlockchainStatusCard";
-import { BlockchainVerificationBadge } from "@/components/dashboard/BlockchainVerificationBadge";
 import { DatasetManagerCard } from "@/components/dashboard/DatasetManagerCard";
 import { DatasetUploaderCard } from "@/components/dashboard/DatasetUploaderCard";
 import { LatestAnalysisCard } from "@/components/dashboard/LatestAnalysisCard";
 import { ModelComparisonCard } from "@/components/dashboard/ModelComparisonCard";
+import { ModelPerformanceCard } from "@/components/dashboard/ModelPerformanceCard";
+import { TrainingGraphs } from "@/components/dashboard/TrainingGraphs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,7 +21,7 @@ import { summarizeAnalysisMetadata } from "@/lib/analysisMetadata";
 import { analyzeNewsHybrid } from "@/lib/analyzeNewsHybrid";
 import { analysisSchema, type PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 import { createNewsCheck, listUserNewsChecks, updateNewsCheckVerification, updateProfile } from "@/lib/newsChecks";
-import { storeNewsVerification, getTransactionUrl } from "@/lib/blockchain";
+import { storeNewsVerification, getTransactionUrl, verifyStoredAnalysis } from "@/lib/blockchain";
 
 const profileSchema = z.object({
   displayName: z.string().trim().min(2, "Display name must be at least 2 characters.").max(60),
@@ -251,8 +251,13 @@ const Dashboard = () => {
           analysis_metadata: item.analysis_metadata as Record<string, unknown> | null
         }))} />
 
-        {/* Blockchain Status Section */}
-        <BlockchainStatusCard />
+        {/* Model Performance & Training Section */}
+        <section className="grid gap-4 lg:grid-cols-2">
+          <ModelPerformanceCard />
+        </section>
+
+        {/* Training Graphs Section */}
+        <TrainingGraphs />
 
         {/* Dataset Management Section */}
         <section className="grid gap-4 lg:grid-cols-2">
@@ -318,7 +323,10 @@ const Dashboard = () => {
               </CardContent>
             </Card>
 
-            <LatestAnalysisCard item={latestResult} />
+            <div className="space-y-4">
+              <ModelPerformanceCard />
+              <LatestAnalysisCard item={latestResult} />
+            </div>
           </div>
         </section>
 
@@ -372,7 +380,31 @@ const Dashboard = () => {
                         {meta.trustScore !== null ? <span>Trust score: <span className="font-semibold">{meta.trustScore}%</span></span> : null}
                       </div>
                       <p className="text-sm text-muted-foreground">{item.explanation}</p>
-                      <div className="mt-3 border-t border-border/70 pt-3">
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border/70 pt-3">
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={async () => {
+                              const result = await verifyStoredAnalysis({
+                                input_text: item.input_text,
+                                source_url: item.source_url,
+                                analysis_metadata: item.analysis_metadata,
+                              });
+
+                              if (result.verified && result.details) {
+                                toast.success(
+                                  `On-chain: ${result.details.isReal ? "REAL" : "FAKE"} • Trust score ${result.details.trustScore}/100`,
+                                );
+                              } else {
+                                toast.error("No on-chain verification found for this analysis.");
+                              }
+                            }}
+                          >
+                            View on-chain status
+                          </Button>
+                        </div>
                         <p className="mb-2 text-xs text-muted-foreground">Set verified label (ground truth) for precision/recall tracking:</p>
                         <div className="flex flex-wrap gap-2">
                           {verificationOptions.map((label) => {

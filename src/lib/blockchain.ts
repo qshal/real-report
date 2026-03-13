@@ -248,6 +248,25 @@ export async function verifyNewsOnChain(
 }
 
 /**
+ * Verify a stored analysis by reconstructing the original content
+ * that was hashed and sent on-chain.
+ */
+export async function verifyStoredAnalysis(input: {
+  input_text: string | null;
+  source_url: string | null;
+  analysis_metadata: unknown;
+}): Promise<BlockchainVerifyResult> {
+  const meta = input.analysis_metadata as any;
+
+  const contentForBlockchain =
+    input.input_text && input.input_text.length > 0
+      ? input.input_text
+      : `${input.source_url ?? ""}\n${meta?.urlContent?.title || ""}\n${meta?.urlContent?.content || ""}`;
+
+  return verifyNewsOnChain(contentForBlockchain);
+}
+
+/**
  * Get blockchain statistics
  */
 export async function getBlockchainStats(): Promise<{
