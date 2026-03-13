@@ -12,18 +12,6 @@ dist
 dist-ssr
 *.local
 
-# Environment variables (CRITICAL - contains private keys)
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Blockchain artifacts
-artifacts/
-cache/
-typechain-types/
-
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

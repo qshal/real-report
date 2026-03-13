@@ -1,7 +1,6 @@
 import { analyzeWithAI, getGeminiApiKey } from "@/lib/aiFactChecker";
 import { extractClaim, searchTrustedNews, getNewsApiKey } from "@/lib/retrievalVerification";
 import { analyzeSourceCredibility } from "@/lib/sourceCredibility";
-import { generateArticleHash } from "@/lib/blockchain";
 import type { PredictionLabel } from "@/lib/fakeNewsAnalyzer";
 
 export type AnalyzeNewsPayload =
@@ -20,14 +19,6 @@ export type HybridAnalysisResult = {
   explanation: string;
   modelName: string;
   metadata: Record<string, unknown>;
-  blockchain?: {
-    contentHash: string;
-    resultHash: string;
-    stored: boolean;
-    txHash?: string;
-    verified?: boolean;
-    error?: string;
-  };
 };
 
 const clampConfidence = (value: number) => Math.max(1, Math.min(99, Math.round(value)));

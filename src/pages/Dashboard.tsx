@@ -3,6 +3,8 @@ import { z } from "zod";
 import { BarChart3, Clock3, LogOut, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisOverviewCards } from "@/components/dashboard/AnalysisOverviewCards";
+import { BlockchainStatusCard } from "@/components/dashboard/BlockchainStatusCard";
+import { BlockchainVerificationBadge } from "@/components/dashboard/BlockchainVerificationBadge";
 import { DatasetManagerCard } from "@/components/dashboard/DatasetManagerCard";
 import { DatasetUploaderCard } from "@/components/dashboard/DatasetUploaderCard";
 import { LatestAnalysisCard } from "@/components/dashboard/LatestAnalysisCard";
@@ -74,12 +76,18 @@ const Dashboard = () => {
     event.preventDefault();
     if (!user) return;
 
+    // Normalize URL: add https:// if protocol is missing
+    let normalizedUrl = urlValue.trim();
+    if (inputType === "url" && normalizedUrl && !normalizedUrl.match(/^https?:\/\//i)) {
+      normalizedUrl = `https://${normalizedUrl}`;
+    }
+
     const payload =
       inputType === "text"
         ? { inputType, text: textValue }
         : {
             inputType,
-            url: urlValue,
+            url: normalizedUrl,
           };
 
     const parsed = analysisSchema.safeParse(payload);
@@ -192,6 +200,9 @@ const Dashboard = () => {
 
         <ModelComparisonCard history={history} />
 
+        {/* Blockchain Status Section */}
+        <BlockchainStatusCard />
+
         {/* Dataset Management Section */}
         <section className="grid gap-4 lg:grid-cols-2">
           <DatasetManagerCard />
@@ -288,6 +299,16 @@ const Dashboard = () => {
                             </Badge>
                           ) : null}
                           {meta.riskBand ? <Badge variant="outline">Risk: {meta.riskBand}</Badge> : null}
+                          {/* Add blockchain verification badge */}
+                          {(item.analysis_metadata as any)?.blockchainVerification && (
+                            <BlockchainVerificationBadge 
+                              analysis={{ 
+                                blockchain: (item.analysis_metadata as any).blockchainVerification,
+                                metadata: item.analysis_metadata 
+                              } as any} 
+                              compact 
+                            />
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground">{new Date(item.created_at).toLocaleString()}</p>
                       </div>

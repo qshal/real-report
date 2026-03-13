@@ -3,7 +3,7 @@
  * Run with: node scripts/generate-wallet.js
  */
 
-import { ethers } from 'ethers';
+const { ethers } = require('ethers');
 
 function generateWallet() {
   console.log('🔐 Generating new wallet for blockchain deployment...\n');
